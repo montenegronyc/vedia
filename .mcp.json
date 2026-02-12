@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "vedia": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["/Users/lee/dev/vedia/vedia/mcp_server.py"]
+    }
+  }
+}
