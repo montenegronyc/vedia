@@ -1,0 +1,5 @@
+pyswisseph>=2.10.0
+geopy>=2.4.0
+timezonefinder>=6.2.0
+pytz>=2024.1
+rich>=13.7.0

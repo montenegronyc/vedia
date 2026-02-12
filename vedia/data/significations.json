@@ -1,0 +1,222 @@
+{
+    "houses": {
+        "1": {
+            "name": "Lagna/Ascendant",
+            "areas": ["self", "body", "personality", "appearance", "health", "beginnings", "constitution", "temperament"],
+            "body_parts": ["head", "brain", "skull"],
+            "karaka": "Sun",
+            "description": "The self, physical body, personality, and how one is perceived by the world. The foundation of the entire chart."
+        },
+        "2": {
+            "name": "Dhana",
+            "areas": ["wealth", "family", "speech", "food", "right eye", "face", "values", "early education", "accumulated resources"],
+            "body_parts": ["face", "mouth", "throat", "right eye", "teeth", "tongue"],
+            "karaka": "Jupiter",
+            "description": "Accumulated wealth, family lineage, speech and communication style, food habits, and personal values."
+        },
+        "3": {
+            "name": "Sahaja",
+            "areas": ["siblings", "courage", "communication", "short journeys", "hands", "arts", "hobbies", "willpower", "neighbors", "writing"],
+            "body_parts": ["arms", "hands", "shoulders", "right ear", "upper chest"],
+            "karaka": "Mars",
+            "description": "Courage, younger siblings, communication skills, short travels, artistic abilities, and self-effort."
+        },
+        "4": {
+            "name": "Sukha",
+            "areas": ["mother", "home", "property", "vehicles", "inner peace", "education", "comforts", "land", "emotional foundation", "chest"],
+            "body_parts": ["chest", "heart", "lungs", "breasts"],
+            "karaka": "Moon",
+            "description": "Mother, home environment, emotional security, vehicles, landed property, formal education, and inner happiness."
+        },
+        "5": {
+            "name": "Putra",
+            "areas": ["children", "intelligence", "creativity", "romance", "mantras", "past life merit", "speculation", "higher education", "stomach"],
+            "body_parts": ["stomach", "upper abdomen", "heart"],
+            "karaka": "Jupiter",
+            "description": "Children, creative intelligence, romance, spiritual practices, past life merits (purva punya), and speculative gains."
+        },
+        "6": {
+            "name": "Ari/Shatru",
+            "areas": ["enemies", "disease", "debt", "service", "litigation", "obstacles", "competition", "daily work", "maternal uncle", "pets"],
+            "body_parts": ["intestines", "lower abdomen", "kidneys", "waist"],
+            "karaka": "Mars/Saturn",
+            "description": "Enemies, diseases, debts, service, obstacles, litigation, and the capacity to overcome adversity through effort."
+        },
+        "7": {
+            "name": "Kalatra",
+            "areas": ["spouse", "marriage", "partnerships", "business partner", "public dealings", "foreign travel", "desire", "trade"],
+            "body_parts": ["lower back", "kidneys", "reproductive organs"],
+            "karaka": "Venus",
+            "description": "Marriage partner, all forms of partnership, public image, foreign connections, and the nature of desire and relationships."
+        },
+        "8": {
+            "name": "Randhra/Ayu",
+            "areas": ["longevity", "death", "transformation", "occult", "inheritance", "sudden events", "chronic illness", "hidden knowledge", "research", "insurance"],
+            "body_parts": ["reproductive organs", "pelvic region", "chronic disease areas"],
+            "karaka": "Saturn",
+            "description": "Longevity, transformation, sudden upheavals, occult knowledge, inheritance, hidden matters, and the mysteries of life and death."
+        },
+        "9": {
+            "name": "Dharma/Bhagya",
+            "areas": ["father", "guru", "religion", "higher learning", "long journeys", "luck", "dharma", "philosophy", "law", "pilgrimage"],
+            "body_parts": ["thighs", "hips"],
+            "karaka": "Jupiter",
+            "description": "Father, guru, fortune, dharma, higher philosophy, religious devotion, long-distance travel, and divine grace."
+        },
+        "10": {
+            "name": "Karma",
+            "areas": ["career", "profession", "status", "authority", "government", "fame", "public life", "action", "achievement", "reputation"],
+            "body_parts": ["knees", "joints", "bones"],
+            "karaka": "Mercury/Sun/Saturn",
+            "description": "Career, profession, public status, authority, government relations, fame, and one's actions and impact in the world."
+        },
+        "11": {
+            "name": "Labha",
+            "areas": ["gains", "income", "elder siblings", "friends", "aspirations", "social networks", "fulfillment of desires", "profits", "left ear"],
+            "body_parts": ["calves", "shins", "ankles", "left ear"],
+            "karaka": "Jupiter",
+            "description": "Gains, income from profession, elder siblings, friendships, social circles, aspirations, and the fulfillment of desires."
+        },
+        "12": {
+            "name": "Vyaya",
+            "areas": ["losses", "expenses", "foreign lands", "isolation", "spirituality", "liberation", "sleep", "bed pleasures", "left eye", "ashrams", "hospitals"],
+            "body_parts": ["feet", "left eye", "sleep-related"],
+            "karaka": "Saturn",
+            "description": "Losses, expenses, foreign residence, spiritual liberation, isolation, sleep, dreams, and the final dissolution of worldly attachments."
+        }
+    },
+    "signs": {
+        "1": {
+            "name": "Aries",
+            "sanskrit": "Mesha",
+            "element": "Fire",
+            "quality": "Movable",
+            "lord": "Mars",
+            "nature": "Malefic",
+            "gender": "Male",
+            "direction": "East",
+            "description": "Dynamic, pioneering, assertive, competitive, courageous, impulsive"
+        },
+        "2": {
+            "name": "Taurus",
+            "sanskrit": "Vrishabha",
+            "element": "Earth",
+            "quality": "Fixed",
+            "lord": "Venus",
+            "nature": "Benefic",
+            "gender": "Female",
+            "direction": "South",
+            "description": "Stable, sensual, resourceful, patient, materialistic, pleasure-loving"
+        },
+        "3": {
+            "name": "Gemini",
+            "sanskrit": "Mithuna",
+            "element": "Air",
+            "quality": "Dual",
+            "lord": "Mercury",
+            "nature": "Benefic",
+            "gender": "Male",
+            "direction": "West",
+            "description": "Communicative, intellectual, versatile, curious, adaptable, dual-natured"
+        },
+        "4": {
+            "name": "Cancer",
+            "sanskrit": "Karka",
+            "element": "Water",
+            "quality": "Movable",
+            "lord": "Moon",
+            "nature": "Benefic",
+            "gender": "Female",
+            "direction": "North",
+            "description": "Nurturing, emotional, protective, intuitive, domestic, receptive"
+        },
+        "5": {
+            "name": "Leo",
+            "sanskrit": "Simha",
+            "element": "Fire",
+            "quality": "Fixed",
+            "lord": "Sun",
+            "nature": "Malefic",
+            "gender": "Male",
+            "direction": "East",
+            "description": "Regal, creative, authoritative, generous, proud, dramatic"
+        },
+        "6": {
+            "name": "Virgo",
+            "sanskrit": "Kanya",
+            "element": "Earth",
+            "quality": "Dual",
+            "lord": "Mercury",
+            "nature": "Benefic",
+            "gender": "Female",
+            "direction": "South",
+            "description": "Analytical, detail-oriented, service-minded, discriminating, practical, health-conscious"
+        },
+        "7": {
+            "name": "Libra",
+            "sanskrit": "Tula",
+            "element": "Air",
+            "quality": "Movable",
+            "lord": "Venus",
+            "nature": "Benefic",
+            "gender": "Male",
+            "direction": "West",
+            "description": "Balanced, diplomatic, aesthetic, relationship-oriented, just, harmonious"
+        },
+        "8": {
+            "name": "Scorpio",
+            "sanskrit": "Vrischika",
+            "element": "Water",
+            "quality": "Fixed",
+            "lord": "Mars",
+            "nature": "Malefic",
+            "gender": "Female",
+            "direction": "North",
+            "description": "Intense, transformative, secretive, powerful, investigative, deep"
+        },
+        "9": {
+            "name": "Sagittarius",
+            "sanskrit": "Dhanu",
+            "element": "Fire",
+            "quality": "Dual",
+            "lord": "Jupiter",
+            "nature": "Benefic",
+            "gender": "Male",
+            "direction": "East",
+            "description": "Philosophical, optimistic, expansive, righteous, adventurous, teaching"
+        },
+        "10": {
+            "name": "Capricorn",
+            "sanskrit": "Makara",
+            "element": "Earth",
+            "quality": "Movable",
+            "lord": "Saturn",
+            "nature": "Malefic",
+            "gender": "Female",
+            "direction": "South",
+            "description": "Ambitious, disciplined, structured, practical, hardworking, status-conscious"
+        },
+        "11": {
+            "name": "Aquarius",
+            "sanskrit": "Kumbha",
+            "element": "Air",
+            "quality": "Fixed",
+            "lord": "Saturn",
+            "nature": "Malefic",
+            "gender": "Male",
+            "direction": "West",
+            "description": "Humanitarian, innovative, detached, intellectual, unconventional, community-oriented"
+        },
+        "12": {
+            "name": "Pisces",
+            "sanskrit": "Meena",
+            "element": "Water",
+            "quality": "Dual",
+            "lord": "Jupiter",
+            "nature": "Benefic",
+            "gender": "Female",
+            "direction": "North",
+            "description": "Spiritual, compassionate, intuitive, imaginative, dissolving, transcendent"
+        }
+    }
+}

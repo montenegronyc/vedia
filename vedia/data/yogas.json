@@ -1,0 +1,149 @@
+[
+    {
+        "name": "Gaja Kesari Yoga",
+        "type": "raja",
+        "description": "Jupiter in kendra from Moon. Bestows wisdom, fame, and prosperity. The native gains recognition, commands respect in assemblies, and lives a meaningful life filled with learning and good reputation.",
+        "planets": ["Jupiter", "Moon"],
+        "conditions": "Jupiter must be in houses 1, 4, 7, or 10 from Moon. Stronger when Jupiter is not combust, debilitated, or in enemy sign."
+    },
+    {
+        "name": "Budhaditya Yoga",
+        "type": "raja",
+        "description": "Mercury conjunct Sun in the same house. Grants sharp intellect, eloquent speech, and skill in learning and communication. The native excels in education, analytical thinking, and gains respect through knowledge.",
+        "planets": ["Mercury", "Sun"],
+        "conditions": "Mercury and Sun must be conjunct in the same house. Strongest when Mercury is not combust (more than 14 degrees from Sun) and in a kendra or trikona."
+    },
+    {
+        "name": "Chandra-Mangal Yoga",
+        "type": "dhana",
+        "description": "Moon conjunct Mars creates a wealth-producing combination. The native earns through bold enterprise, real estate, or courage-driven ventures. Provides financial prosperity through self-effort and determination.",
+        "planets": ["Moon", "Mars"],
+        "conditions": "Moon and Mars must be conjunct in the same house. Results vary based on the house of conjunction and dignity of both planets."
+    },
+    {
+        "name": "Amala Yoga",
+        "type": "raja",
+        "description": "A natural benefic (Jupiter, Venus, Mercury, or Moon) in the 10th house from Lagna or Moon. Bestows an unblemished reputation, ethical conduct, and lasting fame. The native leads a virtuous public life.",
+        "planets": ["Jupiter", "Venus", "Mercury", "Moon"],
+        "conditions": "A natural benefic planet must occupy the 10th house from Lagna or Moon. The benefic should not be afflicted by malefic aspects or conjunctions."
+    },
+    {
+        "name": "Parvata Yoga",
+        "type": "raja",
+        "description": "Benefic planets in kendras with no malefic influence on kendras, or lords of Lagna and 12th in mutual kendras. Bestows leadership, fame, prosperity, and a charitable disposition. The native rises to prominence like a mountain.",
+        "planets": [],
+        "conditions": "Benefic planets must occupy kendras (1, 4, 7, 10) while no malefics occupy kendras. Alternatively, the lords of the 1st and 12th houses are in mutual kendras from each other."
+    },
+    {
+        "name": "Raja Yoga",
+        "type": "raja",
+        "description": "Generic Raja Yoga formed by the association of kendra and trikona lords. Grants power, authority, status, and success in worldly affairs. The degree of results depends on the specific lords involved and their strength.",
+        "planets": [],
+        "conditions": "The lord of a kendra (1, 4, 7, 10) must be conjunct with, aspected by, or in mutual exchange with the lord of a trikona (1, 5, 9). Both planets should have good dignity and not be afflicted."
+    },
+    {
+        "name": "Dhana Yoga",
+        "type": "dhana",
+        "description": "Generic Dhana Yoga formed by the association of wealth-producing house lords. Grants financial prosperity, accumulation of assets, and material comfort. Multiple Dhana Yogas amplify wealth-generating potential.",
+        "planets": [],
+        "conditions": "Lords of houses 1, 2, 5, 9, and 11 must form conjunctions, mutual aspects, or exchanges with each other. The more combinations present, the stronger the wealth potential."
+    },
+    {
+        "name": "Ruchaka Yoga",
+        "type": "pancha_mahapurusha",
+        "description": "One of the five Pancha Mahapurusha Yogas formed by Mars. Bestows a strong, commanding physique, martial courage, leadership in competitive fields, and the ability to overcome all enemies. The native is bold, adventurous, and rises through valor.",
+        "planets": ["Mars"],
+        "conditions": "Mars must be in its own sign (Aries or Scorpio) or exalted (Capricorn) AND in a kendra house (1, 4, 7, or 10) from the Lagna."
+    },
+    {
+        "name": "Bhadra Yoga",
+        "type": "pancha_mahapurusha",
+        "description": "One of the five Pancha Mahapurusha Yogas formed by Mercury. Bestows exceptional intellect, eloquence, learning, and skill in commerce and communication. The native excels in education, writing, trade, and intellectual pursuits.",
+        "planets": ["Mercury"],
+        "conditions": "Mercury must be in its own sign (Gemini or Virgo) or exalted (Virgo) AND in a kendra house (1, 4, 7, or 10) from the Lagna."
+    },
+    {
+        "name": "Hamsa Yoga",
+        "type": "pancha_mahapurusha",
+        "description": "One of the five Pancha Mahapurusha Yogas formed by Jupiter. Bestows wisdom, spirituality, righteousness, and the highest moral character. The native is learned, respected by scholars, devoted to dharma, and lives a life of purpose and honor.",
+        "planets": ["Jupiter"],
+        "conditions": "Jupiter must be in its own sign (Sagittarius or Pisces) or exalted (Cancer) AND in a kendra house (1, 4, 7, or 10) from the Lagna."
+    },
+    {
+        "name": "Malavya Yoga",
+        "type": "pancha_mahapurusha",
+        "description": "One of the five Pancha Mahapurusha Yogas formed by Venus. Bestows beauty, artistic talent, luxurious lifestyle, strong relationships, and material comfort. The native enjoys sensual pleasures, possesses charm, and excels in creative arts.",
+        "planets": ["Venus"],
+        "conditions": "Venus must be in its own sign (Taurus or Libra) or exalted (Pisces) AND in a kendra house (1, 4, 7, or 10) from the Lagna."
+    },
+    {
+        "name": "Shasha Yoga",
+        "type": "pancha_mahapurusha",
+        "description": "One of the five Pancha Mahapurusha Yogas formed by Saturn. Bestows authority over others, organizational power, discipline, and command over workers and servants. The native rises through persistent effort and becomes a leader in their domain.",
+        "planets": ["Saturn"],
+        "conditions": "Saturn must be in its own sign (Capricorn or Aquarius) or exalted (Libra) AND in a kendra house (1, 4, 7, or 10) from the Lagna."
+    },
+    {
+        "name": "Viparita Raja Yoga",
+        "type": "raja",
+        "description": "Lords of dusthana houses (6, 8, 12) placed in other dusthana houses. Paradoxically turns misfortune into fortune. The native gains through the downfall of enemies, unexpected reversals of bad situations, and triumph through adversity.",
+        "planets": [],
+        "conditions": "The lord of the 6th, 8th, or 12th house must be placed in another dusthana house (6th, 8th, or 12th). Harsha Yoga (6th lord in 8th/12th), Sarala Yoga (8th lord in 6th/12th), or Vimala Yoga (12th lord in 6th/8th). The dusthana lords should not conjoin with or be aspected by other house lords."
+    },
+    {
+        "name": "Neecha Bhanga Raja Yoga",
+        "type": "raja",
+        "description": "Cancellation of debilitation that transforms a planet's weakness into exceptional strength. The native overcomes early hardships to achieve remarkable success. Initial struggles become the foundation for extraordinary accomplishments.",
+        "planets": [],
+        "conditions": "A debilitated planet's debilitation is cancelled when: (1) the lord of the sign where the planet is debilitated is in a kendra from Lagna or Moon, (2) the lord of the sign where the debilitated planet is exalted is in a kendra from Lagna or Moon, (3) the debilitated planet is aspected by or conjunct its exaltation lord, or (4) the debilitated planet is in a kendra from Lagna or Moon."
+    },
+    {
+        "name": "Kemadruma Yoga",
+        "type": "dosha",
+        "description": "Moon has no planets in the 2nd or 12th house from it. Indicates emotional isolation, financial instability, and periods of mental distress. The native may experience loneliness and lack of support despite other strengths in the chart.",
+        "planets": ["Moon"],
+        "conditions": "No planets (excluding Sun, Rahu, and Ketu) in the 2nd or 12th house from Moon. Cancelled if Moon is in a kendra, aspected by Jupiter, conjunct a benefic, or if planets are in kendras from Lagna."
+    },
+    {
+        "name": "Kaal Sarpa Yoga",
+        "type": "dosha",
+        "description": "All seven planets hemmed between Rahu and Ketu. Creates a karmic pattern of intense struggles, sudden upheavals, and feeling trapped by destiny. The native experiences extreme highs and lows, with life events often feeling fated and beyond personal control.",
+        "planets": ["Rahu", "Ketu"],
+        "conditions": "All seven visible planets (Sun, Moon, Mars, Mercury, Jupiter, Venus, Saturn) must be placed between Rahu and Ketu on one side of the nodal axis. Partial Kaal Sarpa occurs when most but not all planets are hemmed. Effects are reduced when benefics aspect the nodes."
+    },
+    {
+        "name": "Mangal Dosha",
+        "type": "dosha",
+        "description": "Mars in houses 1, 2, 4, 7, 8, or 12 from Lagna, Moon, or Venus. Creates friction, aggression, and potential conflict in marriage and partnerships. The native may experience delays in marriage or turbulence in relationships unless matched with another Manglik.",
+        "planets": ["Mars"],
+        "conditions": "Mars occupies houses 1, 2, 4, 7, 8, or 12 from Lagna, Moon, or Venus. Cancelled when Mars is in its own sign or exalted, when Mars is aspected by Jupiter, when the 7th lord is strong, or when both partners have Mangal Dosha. Severity varies by house placement."
+    },
+    {
+        "name": "Sade Sati",
+        "type": "transit_dosha",
+        "description": "Saturn transiting the 12th, 1st, and 2nd houses from natal Moon over approximately 7.5 years. Brings karmic lessons, restructuring, and testing of emotional resilience. The native faces challenges related to career, relationships, and self-identity that ultimately lead to maturation.",
+        "planets": ["Saturn", "Moon"],
+        "conditions": "Saturn transits through the sign before natal Moon (12th from Moon), the sign of natal Moon (1st from Moon), and the sign after natal Moon (2nd from Moon). Each phase lasts approximately 2.5 years. First phase affects finances and family, second phase affects mind and health, third phase affects relationships and income."
+    },
+    {
+        "name": "Saraswati Yoga",
+        "type": "raja",
+        "description": "Grants exceptional learning, mastery of arts and sciences, eloquent speech, and literary talent. The native becomes renowned for wisdom, may author important works, and commands respect in scholarly circles. Produces educators, writers, and artists of the highest caliber.",
+        "planets": ["Jupiter", "Venus", "Mercury"],
+        "conditions": "Jupiter, Venus, and Mercury must occupy kendras (1, 4, 7, 10), trikonas (1, 5, 9), or the 2nd house from Lagna. Jupiter must be in its own sign, exalted, or in a friendly sign. All three planets should be strong and unafflicted."
+    },
+    {
+        "name": "Lakshmi Yoga",
+        "type": "dhana",
+        "description": "Grants tremendous wealth, prosperity, beauty, and grace. The native enjoys material abundance, lives luxuriously, and is blessed by the goddess Lakshmi. They accumulate wealth through righteous means and maintain a generous, dignified lifestyle.",
+        "planets": ["Venus"],
+        "conditions": "The lord of the 9th house must be very strong (in own sign, exalted, or in moolatrikona) and placed in a kendra or trikona. Venus must also be strong (in own sign, exalted, or in a kendra/trikona). The Lagna lord must be powerful."
+    },
+    {
+        "name": "Gauri Yoga",
+        "type": "raja",
+        "description": "Grants beauty, virtue, noble character, a devoted spouse, and a blessed family life. The native is culturally refined, well-mannered, and respected in society. They enjoy harmonious relationships and are known for moral integrity and grace.",
+        "planets": ["Moon"],
+        "conditions": "Moon must be in the 2nd house and aspected by Jupiter, or Moon must be in a trikona from Jupiter while the 9th lord is in a kendra. Variant: Moon in its own or exalted navamsha in a kendra or trikona, aspected by Jupiter."
+    }
+]
