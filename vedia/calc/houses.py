@@ -96,6 +96,46 @@ def get_aspects(planet: str, planet_sign: int) -> list[int]:
     return sorted(aspected_signs)
 
 
+# Proportional aspect strengths (traditional weights)
+_ASPECT_STRENGTHS = {
+    'Mars':    {4: 75, 7: 100, 8: 100},
+    'Jupiter': {5: 50, 7: 100, 9: 75},
+    'Saturn':  {3: 50, 7: 100, 10: 100},
+    'Rahu':    {5: 50, 7: 100, 9: 75},
+    'Ketu':    {5: 50, 7: 100, 9: 75},
+}
+
+
+def get_aspects_with_strength(planet: str, planet_sign: int) -> list[tuple[int, int]]:
+    """Calculate which signs a planet aspects with proportional strength.
+
+    Returns a list of (aspected_sign, strength_percent) tuples.
+    Strength is 100 for full aspects, 75 for three-quarter, 50 for half.
+
+    All planets have a full (100%) 7th-sign aspect. Special aspects
+    use traditional proportional weights.
+
+    Args:
+        planet: Planet name (e.g. 'Mars', 'Jupiter').
+        planet_sign: Sign number (1-12) the planet occupies.
+
+    Returns:
+        List of (sign_number, strength_percent) tuples, sorted by sign.
+    """
+    strengths = _ASPECT_STRENGTHS.get(planet, {7: 100})
+
+    # If planet has no special aspects, just give it the universal 7th
+    if planet not in _ASPECT_STRENGTHS:
+        strengths = {7: 100}
+
+    result = []
+    for offset, strength_pct in strengths.items():
+        aspected_sign = ((planet_sign - 1 + offset) % 12) + 1
+        result.append((aspected_sign, strength_pct))
+
+    return sorted(result, key=lambda x: x[0])
+
+
 def get_house_signification(house: int) -> str:
     """Return a brief description of what a house signifies.
 

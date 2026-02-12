@@ -122,10 +122,25 @@ def init_db(conn: sqlite3.Connection):
         created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS geocoding_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_query TEXT NOT NULL UNIQUE,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        timezone TEXT NOT NULL,
+        display_name TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_charts_person ON charts(person_id);
     CREATE INDEX IF NOT EXISTS idx_planets_chart ON planet_positions(chart_id);
     CREATE INDEX IF NOT EXISTS idx_dasha_person ON dasha_periods(person_id);
     CREATE INDEX IF NOT EXISTS idx_yogas_chart ON yogas(chart_id);
+    CREATE INDEX IF NOT EXISTS idx_dasha_periods_dates ON dasha_periods(person_id, start_date, end_date);
+    CREATE INDEX IF NOT EXISTS idx_readings_created ON readings(person_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_yogas_type ON yogas(chart_id, yoga_type);
+    CREATE INDEX IF NOT EXISTS idx_ashtakavarga_chart ON ashtakavarga(chart_id, type);
+    CREATE INDEX IF NOT EXISTS idx_shadbala_chart ON shadbala(chart_id);
     """)
     conn.commit()
 
@@ -317,3 +332,28 @@ def get_ashtakavarga(conn: sqlite3.Connection, chart_id: int, avtype: str = 'sar
         (chart_id, avtype)
     )
     return [dict(r) for r in cur.fetchall()]
+
+
+def get_cached_geocode(conn: sqlite3.Connection, location: str) -> Optional[dict]:
+    """Look up a cached geocoding result."""
+    cur = conn.execute(
+        "SELECT * FROM geocoding_cache WHERE location_query = ?",
+        (location.strip().lower(),)
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def save_geocode_cache(conn: sqlite3.Connection, location: str, latitude: float,
+                       longitude: float, timezone: str, display_name: str = None):
+    """Cache a geocoding result for future use."""
+    try:
+        conn.execute(
+            """INSERT OR IGNORE INTO geocoding_cache
+               (location_query, latitude, longitude, timezone, display_name)
+               VALUES (?, ?, ?, ?, ?)""",
+            (location.strip().lower(), latitude, longitude, timezone, display_name)
+        )
+        conn.commit()
+    except Exception:
+        pass  # Don't fail on cache write errors

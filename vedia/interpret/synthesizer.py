@@ -4,6 +4,7 @@ This module is the heart of the Vedia interpretation engine. It takes
 calculated chart data -- planet positions, dashas, yogas, and transits --
 and weaves them into coherent, human-readable astrological consultations.
 """
+import json
 from datetime import datetime
 from typing import Optional
 
@@ -1479,3 +1480,144 @@ def generate_topic_reading(
     sections.append(_section("SYNTHESIS", "\n".join(synthesis_lines)))
 
     return "\n".join(sections)
+
+
+# ---------------------------------------------------------------------------
+# 4. SMART ROUTER — synthesize_reading()
+# ---------------------------------------------------------------------------
+
+def _convert_yoga_rows(rows: list[dict]) -> list[YogaResult]:
+    """Convert yoga DB row dicts to YogaResult dataclass instances.
+
+    DB rows store ``planets_involved`` and ``houses_involved`` as JSON
+    strings; YogaResult expects ``list[str]`` and ``list[int]``.
+    """
+    results: list[YogaResult] = []
+    for row in rows:
+        planets = row.get('planets_involved', '[]')
+        if isinstance(planets, str):
+            planets = json.loads(planets)
+        houses = row.get('houses_involved', '[]')
+        if isinstance(houses, str):
+            houses = json.loads(houses)
+        results.append(YogaResult(
+            yoga_name=row.get('yoga_name', ''),
+            yoga_type=row.get('yoga_type', ''),
+            planets_involved=planets,
+            houses_involved=houses,
+            strength=row.get('strength', 'moderate'),
+            description=row.get('description', ''),
+        ))
+    return results
+
+
+def _build_dasha_dict(
+    current_dasha: tuple[dict | None, dict | None, dict | None],
+) -> dict:
+    """Convert a (maha, antar, pratyantar) tuple of DB rows into the dict
+    format expected by the existing generator functions.
+
+    Expected output keys: maha, antar, maha_start, maha_end,
+    antar_start, antar_end.
+    """
+    maha, antar, _pratyantar = current_dasha
+    result: dict = {}
+    if maha:
+        result['maha'] = maha.get('planet', '')
+        result['maha_start'] = str(maha.get('start_date', ''))
+        result['maha_end'] = str(maha.get('end_date', ''))
+    if antar:
+        result['antar'] = antar.get('planet', '')
+        result['antar_start'] = str(antar.get('start_date', ''))
+        result['antar_end'] = str(antar.get('end_date', ''))
+    return result
+
+
+def _detect_topic(question: str) -> str | None:
+    """Return the first matching topic keyword from the question, or None."""
+    q_lower = question.lower()
+    for keyword in _TOPIC_MAP:
+        if keyword in q_lower:
+            return keyword
+    return None
+
+
+def synthesize_reading(
+    question: str,
+    person_name: str,
+    natal_planets: list[PlanetPosition],
+    asc_sign: int,
+    current_dasha: tuple[dict | None, dict | None, dict | None],
+    yogas: list[dict],
+    shadbala: list[dict],
+    transit_summary: dict | None = None,
+) -> str:
+    """Smart router that adapts incoming data and delegates to the
+    appropriate generator function.
+
+    Parameters
+    ----------
+    question : str
+        The user's question (e.g. "How is my career?").
+    person_name : str
+        Name of the person the reading is for.
+    natal_planets : list[PlanetPosition]
+        Natal planet positions.
+    asc_sign : int
+        Ascendant zodiac sign (1-12).
+    current_dasha : tuple
+        Three-element tuple of (maha, antar, pratyantar) DB row dicts.
+        Any element may be None.
+    yogas : list[dict]
+        Yoga DB row dicts (planets_involved / houses_involved are JSON
+        strings).
+    shadbala : list[dict]
+        Shadbala DB row dicts (not currently consumed by generators but
+        accepted here for future use).
+    transit_summary : dict | None
+        Transit summary dict from ``get_transit_summary()``, or None.
+
+    Returns
+    -------
+    str
+        A fully formatted astrological reading.
+    """
+    # -- Adapt data --
+    yoga_results = _convert_yoga_rows(yogas)
+    dasha_dict = _build_dasha_dict(current_dasha)
+
+    # Moon position for moon_nakshatra
+    moon = _find_planet(natal_planets, 'Moon')
+    moon_nakshatra: int = moon.nakshatra if moon else 1
+
+    # asc_degree: not directly available from the call site, use 15.0 as
+    # a mid-sign default (the generators only use it for display).
+    asc_degree: float = 15.0
+
+    # -- Detect topic --
+    topic = _detect_topic(question)
+
+    # -- Header --
+    header = f"Reading for {person_name}\nQuestion: {question}\n"
+
+    # -- Route --
+    if topic is not None:
+        reading = generate_topic_reading(
+            topic=topic,
+            planets=natal_planets,
+            asc_sign=asc_sign,
+            yogas=yoga_results,
+            current_dasha=dasha_dict,
+            transit_planets=None,  # transit_summary is a dict, not PlanetPosition list
+        )
+    else:
+        reading = generate_birth_chart_reading(
+            planets=natal_planets,
+            asc_sign=asc_sign,
+            asc_degree=asc_degree,
+            yogas=yoga_results,
+            current_dasha=dasha_dict,
+            moon_nakshatra=moon_nakshatra,
+        )
+
+    return header + "\n" + reading

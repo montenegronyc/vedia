@@ -28,6 +28,7 @@ from .db import (
     get_yogas, get_all_persons, get_shadbala, get_ashtakavarga,
 )
 from .models import SIGNS, NAKSHATRA_NAMES, ChartData, PlanetPosition, SIGN_LORDS
+from .calc.houses import get_aspects
 
 try:
     from .geo import geocode_location, local_to_utc, get_utc_offset, format_location_info
@@ -66,6 +67,12 @@ except ImportError:
     calculate_shadbala = None
 
 try:
+    from .calc.divisional import calculate_divisional_chart, get_divisional_sign
+except ImportError:
+    calculate_divisional_chart = None
+    get_divisional_sign = None
+
+try:
     from .transit.current import get_current_positions
 except ImportError:
     get_current_positions = None
@@ -75,6 +82,21 @@ try:
 except ImportError:
     overlay_transits = None
     get_transit_summary = None
+
+try:
+    from .transit.vedha import analyze_all_vedha
+except ImportError:
+    analyze_all_vedha = None
+
+try:
+    from .interpret.synastry import analyze_synastry
+except ImportError:
+    analyze_synastry = None
+
+try:
+    from .calc.muhurta import evaluate_muhurta, compare_dates
+except ImportError:
+    evaluate_muhurta = None
 
 
 console = Console()
@@ -312,6 +334,29 @@ def cmd_new(args):
         init_db(conn)
         person_id = save_person(conn, name, date_str, time_str, tz_str, location, lat, lon)
         chart_id = save_chart(conn, person_id, chart_data)
+
+        # Save D9 (Navamsha) chart
+        if calculate_divisional_chart is not None:
+            d9_planets = calculate_divisional_chart(planet_positions, 'D9', asc_sign, asc_degree)
+            d9_chart_data = ChartData(
+                person_name=name,
+                birth_date=date_str,
+                birth_time=time_str,
+                birth_timezone=tz_str,
+                birth_location=location,
+                latitude=lat,
+                longitude=lon,
+                chart_type='D9',
+                ayanamsha='lahiri',
+                ayanamsha_value=ayanamsha_val,
+                ascendant_sign=get_divisional_sign(asc_sign, asc_degree, 'D9'),
+                ascendant_degree=asc_degree,
+                julian_day=jd,
+                sidereal_time=sidereal_time,
+                planets=d9_planets,
+            )
+            save_chart(conn, person_id, d9_chart_data)
+
         save_dasha_periods(conn, person_id, dashas)
         save_yogas(conn, chart_id, yogas)
         save_ashtakavarga(conn, chart_id, bhinna, sarva)
@@ -449,6 +494,53 @@ def cmd_chart(args):
 
     console.print(planet_table)
 
+    # Planetary Aspects (Drishti) table
+    # Build a lookup: sign -> list of planet names in that sign
+    sign_to_planets: dict[int, list[str]] = {}
+    for row in planet_rows:
+        sign_to_planets.setdefault(row['sign'], []).append(row['planet'])
+
+    aspect_table = Table(
+        box=box.ROUNDED,
+        border_style="gold1",
+        header_style="bold white",
+        show_lines=True,
+        title="Planetary Aspects (Drishti)",
+    )
+    aspect_table.add_column("Planet", style="bold", min_width=9)
+    aspect_table.add_column("Aspected Signs", min_width=18)
+    aspect_table.add_column("Houses", justify="center", min_width=8)
+    aspect_table.add_column("Planets Aspected", min_width=18)
+
+    for row in planet_rows:
+        planet_name = row['planet']
+        planet_sign = row['sign']
+        color = PLANET_COLORS.get(planet_name, 'white')
+
+        aspected_signs = get_aspects(planet_name, planet_sign)
+
+        sign_names = []
+        house_nums = []
+        aspected_planets = []
+
+        for s in aspected_signs:
+            sign_names.append(SIGNS[s] if 1 <= s <= 12 else '?')
+            house_nums.append(str(((s - asc_sign) % 12) + 1))
+            for p in sign_to_planets.get(s, []):
+                if p != planet_name:
+                    p_color = PLANET_COLORS.get(p, 'white')
+                    aspected_planets.append(f"[{p_color}]{p}[/{p_color}]")
+
+        aspect_table.add_row(
+            f"[{color}]{planet_name}[/{color}]",
+            ", ".join(sign_names),
+            ", ".join(house_nums),
+            ", ".join(aspected_planets) if aspected_planets else "[dim]-[/dim]",
+        )
+
+    console.print()
+    console.print(aspect_table)
+
     # Shadbala table
     if shadbala_rows:
         sb_table = Table(
@@ -550,6 +642,65 @@ def cmd_chart(args):
 
 
 # ---------------------------------------------------------------------------
+# Command: d9
+# ---------------------------------------------------------------------------
+
+def cmd_d9(args):
+    """Display the Navamsha (D9) chart."""
+    conn = get_connection()
+    init_db(conn)
+    person = _load_person(args.name, conn)
+    chart = get_chart(conn, person['id'], chart_type='D9')
+    if chart is None:
+        console.print("[red]Error:[/red] No D9 chart found. Re-run [cyan]python -m vedia new ...[/cyan] to generate it.")
+        sys.exit(1)
+    planet_rows = get_planet_positions(conn, chart['id'])
+    conn.close()
+
+    asc_sign = chart['ascendant_sign']
+    asc_name = SIGNS[asc_sign] if 1 <= asc_sign <= 12 else '?'
+
+    console.print()
+    console.print(Panel(
+        f"[bold cyan]{person['name']}[/bold cyan]\n"
+        f"Navamsha Ascendant: {asc_name}\n"
+        f"The D9 chart reveals the deeper dharmic pattern, marriage potential,\n"
+        f"and the soul's evolutionary direction.",
+        title="[bold gold1]Navamsha Chart (D9)[/bold gold1]",
+        border_style="gold1",
+        padding=(1, 2),
+    ))
+
+    # Planet positions table
+    planet_table = Table(
+        box=box.ROUNDED,
+        border_style="gold1",
+        header_style="bold white",
+        show_lines=True,
+        title="D9 Planetary Positions",
+    )
+    planet_table.add_column("Planet", style="bold", min_width=9)
+    planet_table.add_column("D9 Sign", min_width=12)
+    planet_table.add_column("D9 House", justify="center")
+    planet_table.add_column("Retro", justify="center")
+
+    for row in planet_rows:
+        color = PLANET_COLORS.get(row['planet'], 'white')
+        sign_name = SIGNS[row['sign']] if 1 <= row['sign'] <= 12 else '?'
+        retro = "[bold red]R[/bold red]" if row['is_retrograde'] else "[dim]-[/dim]"
+
+        planet_table.add_row(
+            f"[{color}]{row['planet']}[/{color}]",
+            sign_name,
+            str(row['house']),
+            retro,
+        )
+
+    console.print(planet_table)
+    console.print()
+
+
+# ---------------------------------------------------------------------------
 # Command: transit
 # ---------------------------------------------------------------------------
 
@@ -563,7 +714,12 @@ def cmd_transit(args):
     init_db(conn)
     person = _load_person(args.name, conn)
     chart, planet_rows = _load_chart_data(person['id'], conn)
+    sarva_rows = get_ashtakavarga(conn, chart['id'], 'sarva')
     conn.close()
+
+    sav_by_sign = {}
+    for row in sarva_rows:
+        sav_by_sign[row['sign']] = row['points']
 
     natal_planets = _db_planets_to_model(planet_rows)
     asc_sign = chart['ascendant_sign']
@@ -594,6 +750,7 @@ def cmd_transit(args):
     )
     transit_table.add_column("Transit Planet", style="bold", min_width=14)
     transit_table.add_column("Current Sign", min_width=12)
+    transit_table.add_column("SAV", justify="center", min_width=5)
     transit_table.add_column("Natal House", justify="center")
     transit_table.add_column("Key Aspects", min_width=30)
 
@@ -605,6 +762,18 @@ def cmd_transit(args):
         color = PLANET_COLORS.get(planet_name, 'white')
         sign_name = SIGNS[entry['transit_sign']] if 1 <= entry['transit_sign'] <= 12 else '?'
         natal_house = entry['natal_house']
+
+        # SAV score for this transit sign
+        sav_score = sav_by_sign.get(entry['transit_sign'])
+        if sav_score is not None:
+            if sav_score >= 5:
+                sav_display = f"[green]{sav_score}[/green]"
+            elif sav_score <= 2:
+                sav_display = f"[red]{sav_score}[/red]"
+            else:
+                sav_display = f"[yellow]{sav_score}[/yellow]"
+        else:
+            sav_display = "[dim]-[/dim]"
 
         # Build aspects description
         aspects_parts = []
@@ -628,6 +797,7 @@ def cmd_transit(args):
         transit_table.add_row(
             f"[{color}]{planet_name}[/{color}]",
             sign_name,
+            sav_display,
             str(natal_house),
             aspects_str,
             style=row_style,
@@ -686,6 +856,53 @@ def cmd_transit(args):
         console.print()
         for panel in annotations:
             console.print(panel)
+
+    # Vedha (obstruction) analysis
+    if analyze_all_vedha is not None:
+        # Find natal Moon sign
+        natal_moon_sign = None
+        for np in natal_planets:
+            if np.planet == 'Moon':
+                natal_moon_sign = np.sign
+                break
+
+        if natal_moon_sign is not None:
+            vedha_results = analyze_all_vedha(transit_positions, natal_moon_sign)
+
+            # Filter to only benefic transits
+            benefic_rows = [v for v in vedha_results if v['is_benefic_transit']]
+
+            if benefic_rows:
+                console.print()
+                vedha_table = Table(
+                    title="Gochara Vedha Analysis",
+                    box=box.ROUNDED,
+                    border_style="dark_orange",
+                    header_style="bold white",
+                    show_lines=True,
+                )
+                vedha_table.add_column("Planet", style="bold", min_width=12)
+                vedha_table.add_column("Transit House", justify="center", min_width=14)
+                vedha_table.add_column("Status", min_width=30)
+
+                for v in benefic_rows:
+                    color = PLANET_COLORS.get(v['planet'], 'white')
+                    planet_label = f"[{color}]{v['planet']}[/{color}]"
+                    house_label = f"H{v['house_from_moon']} from Moon"
+
+                    if v['has_vedha']:
+                        blocker_color = PLANET_COLORS.get(v['blocking_planet'], 'white')
+                        status = (
+                            f"[red]Benefic - OBSTRUCTED by "
+                            f"[{blocker_color}]{v['blocking_planet']}[/{blocker_color}]"
+                            f" (H{v['vedha_house']})[/red]"
+                        )
+                    else:
+                        status = "[green]Benefic - CLEAR[/green]"
+
+                    vedha_table.add_row(planet_label, house_label, status)
+
+                console.print(vedha_table)
 
     console.print()
 
@@ -1039,6 +1256,192 @@ def cmd_ask(args):
 
 
 # ---------------------------------------------------------------------------
+# Command: muhurta
+# ---------------------------------------------------------------------------
+
+def cmd_muhurta(args):
+    """Evaluate the auspiciousness of a date for a person."""
+    if evaluate_muhurta is None:
+        console.print("[red]Error:[/red] Muhurta module is not available.")
+        sys.exit(1)
+    if calculate_planet_positions is None or calculate_julian_day is None:
+        console.print("[red]Error:[/red] Ephemeris/ayanamsha modules are not available.")
+        sys.exit(1)
+
+    conn = get_connection()
+    init_db(conn)
+    person = _load_person(args.name, conn)
+    chart, planet_rows = _load_chart_data(person['id'], conn)
+
+    natal_planets = _db_planets_to_model(planet_rows)
+    natal_asc_sign = chart['ascendant_sign']
+
+    # Find natal Moon sign
+    natal_moon_sign = None
+    for np in natal_planets:
+        if np.planet == 'Moon':
+            natal_moon_sign = np.sign
+            break
+    if natal_moon_sign is None:
+        console.print("[red]Error:[/red] Natal Moon not found in chart data.")
+        conn.close()
+        sys.exit(1)
+
+    # Parse target date
+    try:
+        target_dt = datetime.strptime(args.date, '%Y-%m-%d')
+    except ValueError:
+        console.print("[red]Error:[/red] Invalid date format. Use YYYY-MM-DD.")
+        conn.close()
+        sys.exit(1)
+
+    event_type = getattr(args, 'type', 'general') or 'general'
+
+    # Get current dasha lord
+    dasha_lord = None
+    maha_rows = get_dasha_periods(conn, person['id'], level='maha')
+    if maha_rows:
+        target_str = target_dt.isoformat()
+        for m in maha_rows:
+            if m['start_date'] <= target_str <= m['end_date']:
+                dasha_lord = m['planet']
+                break
+
+    # Get sarvashtakavarga if available
+    sarvashtakavarga = None
+    ashtakavarga_rows = get_ashtakavarga(conn, chart['id'])
+    if ashtakavarga_rows:
+        # get_ashtakavarga returns (bhinna, sarva) or a dict -- handle both
+        if isinstance(ashtakavarga_rows, tuple) and len(ashtakavarga_rows) == 2:
+            _, sarvashtakavarga = ashtakavarga_rows
+        elif isinstance(ashtakavarga_rows, dict):
+            sarvashtakavarga = ashtakavarga_rows.get('sarva')
+
+    # Get shadbala if available
+    shadbala_rows = get_shadbala(conn, chart['id'])
+
+    conn.close()
+
+    # Calculate transit positions for the target date at noon UTC
+    with console.status("[bold cyan]Calculating transit positions..."):
+        jd = calculate_julian_day(target_dt.year, target_dt.month, target_dt.day, 12.0, 0.0)
+        transit_planets = calculate_planet_positions(jd, natal_asc_sign)
+
+    # Evaluate muhurta
+    with console.status("[bold cyan]Evaluating muhurta..."):
+        result = evaluate_muhurta(
+            natal_planets=natal_planets,
+            natal_asc_sign=natal_asc_sign,
+            natal_moon_sign=natal_moon_sign,
+            transit_planets=transit_planets,
+            target_date=target_dt,
+            event_type=event_type,
+            dasha_lord=dasha_lord,
+            shadbala=shadbala_rows,
+            sarvashtakavarga=sarvashtakavarga,
+        )
+
+    # Display results
+    console.print()
+
+    # Date info panel
+    moon_info = result['moon_transit']
+    moon_sign_name = SIGNS[moon_info['sign']] if 1 <= moon_info['sign'] <= 12 else '?'
+    fav_label = "[green]Favorable[/green]" if moon_info['favorable'] else "[red]Unfavorable[/red]"
+
+    console.print(Panel(
+        f"[bold cyan]{person['name']}[/bold cyan] -- Muhurta Evaluation\n"
+        f"Date: [bold]{result['date']}[/bold] ({result['day_of_week']})\n"
+        f"Vara Lord: {_colored_planet_str(result['vara_lord'])}\n"
+        f"Event Type: [italic]{event_type}[/italic]\n"
+        f"\nMoon Transit: {moon_sign_name} -- {moon_info['nakshatra']}\n"
+        f"House from natal Moon: H{moon_info['house_from_natal_moon']} ({fav_label})"
+        + (f"\nActive Dasha Lord: {_colored_planet_str(dasha_lord)}" if dasha_lord else ""),
+        title="[bold gold1]Muhurta Analysis[/bold gold1]",
+        border_style="gold1",
+        padding=(1, 2),
+    ))
+
+    # Scoring table
+    score_table = Table(
+        title="Muhurta Scores",
+        box=box.ROUNDED,
+        border_style="gold1",
+        header_style="bold white",
+        show_lines=True,
+    )
+    score_table.add_column("Factor", style="bold", min_width=18)
+    score_table.add_column("Score", justify="right", min_width=8)
+    score_table.add_column("Weight", justify="right", min_width=8)
+    score_table.add_column("Weighted", justify="right", min_width=8)
+
+    score_rows = [
+        ("Gochara (Moon transit)", result['gochara_score'], 25),
+        ("Vara (Day lord)", result['vara_score'], 15),
+        ("Nakshatra", result['nakshatra_score'], 20),
+        ("Transit interactions", result['transit_score'], 25),
+        ("Ashtakavarga (SAV)", result['ashtakavarga_score'], 15),
+    ]
+
+    for label, score, weight in score_rows:
+        weighted = score * weight / 10.0
+        score_style = "green" if score >= 7.0 else "yellow" if score >= 5.0 else "red"
+        score_table.add_row(
+            label,
+            f"[{score_style}]{score:.1f}[/{score_style}] / 10",
+            f"{weight}%",
+            f"{weighted:.1f}",
+        )
+
+    console.print(score_table)
+
+    # Total score panel
+    total = result['total_score']
+    ausp = result['auspiciousness']
+    if ausp == 'Highly Auspicious':
+        ausp_style = "bold green"
+    elif ausp == 'Auspicious':
+        ausp_style = "green"
+    elif ausp == 'Moderate':
+        ausp_style = "yellow"
+    elif ausp == 'Challenging':
+        ausp_style = "dark_orange"
+    else:
+        ausp_style = "bold red"
+
+    console.print(Panel(
+        f"[bold]Total Score:[/bold] [{ausp_style}]{total:.1f} / 100[/{ausp_style}]\n"
+        f"[bold]Auspiciousness:[/bold] [{ausp_style}]{ausp}[/{ausp_style}]",
+        border_style=ausp_style,
+        padding=(1, 2),
+    ))
+
+    # Factors list
+    if result['factors']:
+        console.print()
+        console.print("[bold]Factors:[/bold]")
+        for factor in result['factors']:
+            if any(kw in factor.lower() for kw in ('favorable', 'beneficial', 'protective', 'ideal', 'suitable', 'supportive', 'above average', 'strongly')):
+                console.print(f"  [green]+[/green] {factor}")
+            elif any(kw in factor.lower() for kw in ('unfavorable', 'difficult', 'challenging', 'inauspicious', 'pressure', 'confusion', 'delays', 'weak', 'below')):
+                console.print(f"  [red]-[/red] {factor}")
+            else:
+                console.print(f"  [dim]*[/dim] {factor}")
+
+    # Recommendations
+    if result['recommendations']:
+        console.print()
+        console.print(Panel(
+            "\n".join(f"  {r}" for r in result['recommendations']),
+            title="[bold]Recommendations[/bold]",
+            border_style="cyan",
+            padding=(1, 2),
+        ))
+
+    console.print()
+
+
+# ---------------------------------------------------------------------------
 # Command: list
 # ---------------------------------------------------------------------------
 
@@ -1089,6 +1492,237 @@ def cmd_list(args):
 
 
 # ---------------------------------------------------------------------------
+# Command: synastry
+# ---------------------------------------------------------------------------
+
+def cmd_synastry(args):
+    """Compare two charts for compatibility (synastry / Guna Milan)."""
+    if analyze_synastry is None:
+        console.print("[red]Error:[/red] Synastry module is not available.")
+        sys.exit(1)
+
+    conn = get_connection()
+    init_db(conn)
+
+    person1 = _load_person(args.name1, conn)
+    person2 = _load_person(args.name2, conn)
+
+    chart1, planet_rows1 = _load_chart_data(person1['id'], conn)
+    chart2, planet_rows2 = _load_chart_data(person2['id'], conn)
+
+    planets1 = _db_planets_to_model(planet_rows1)
+    planets2 = _db_planets_to_model(planet_rows2)
+
+    asc1 = chart1['ascendant_sign']
+    asc2 = chart2['ascendant_sign']
+
+    # Find Moon nakshatras
+    moon1 = next((p for p in planets1 if p.planet == 'Moon'), None)
+    moon2 = next((p for p in planets2 if p.planet == 'Moon'), None)
+
+    if moon1 is None or moon2 is None:
+        console.print("[red]Error:[/red] Moon position missing from one or both charts.")
+        conn.close()
+        sys.exit(1)
+
+    result = analyze_synastry(
+        person1_planets=planets1,
+        person1_asc_sign=asc1,
+        person1_moon_nakshatra=moon1.nakshatra,
+        person2_planets=planets2,
+        person2_asc_sign=asc2,
+        person2_moon_nakshatra=moon2.nakshatra,
+    )
+
+    # -- Display --
+
+    console.print()
+    console.print(Panel(
+        f"[bold cyan]{person1['name']}[/bold cyan]  &  [bold cyan]{person2['name']}[/bold cyan]\n"
+        f"Synastry / Compatibility Analysis",
+        title="[bold gold1]Vedia -- Synastry[/bold gold1]",
+        border_style="gold1",
+        padding=(1, 2),
+    ))
+
+    # Guna Milan table
+    guna = result['guna_milan']
+    guna_table = Table(
+        title=f"Guna Milan (Ashtakoot) -- {guna['total']}/36  ({guna['percentage']}%)",
+        box=box.ROUNDED,
+        border_style="gold1",
+        header_style="bold white",
+        show_lines=True,
+    )
+    guna_table.add_column("Kuta", style="bold", min_width=14)
+    guna_table.add_column("Score", justify="center", min_width=8)
+    guna_table.add_column("Max", justify="center", min_width=6)
+    guna_table.add_column("Detail", min_width=30)
+
+    for k in guna['kutas']:
+        score_color = 'green' if k['score'] >= k['max'] * 0.6 else (
+            'yellow' if k['score'] > 0 else 'red'
+        )
+        detail_parts = []
+        if 'person1_varna' in k:
+            detail_parts.append(f"{k['person1_varna']} / {k['person2_varna']}")
+        if 'person1_group' in k:
+            detail_parts.append(f"{k['person1_group']} / {k['person2_group']}")
+        if 'quality' in k:
+            detail_parts.append(k['quality'])
+        if 'person1_animal' in k:
+            detail_parts.append(f"{k['person1_animal']} / {k['person2_animal']}")
+        if 'person1_lord' in k:
+            detail_parts.append(f"{k['person1_lord']} / {k['person2_lord']}")
+        if 'person1_gana' in k:
+            detail_parts.append(f"{k['person1_gana']} / {k['person2_gana']}")
+        if 'person1_sign' in k:
+            detail_parts.append(f"{k['person1_sign']} / {k['person2_sign']}")
+        if 'person1_nadi' in k:
+            detail_parts.append(f"{k['person1_nadi']} / {k['person2_nadi']}")
+        detail = " -- ".join(detail_parts) if detail_parts else k.get('description', '')
+
+        guna_table.add_row(
+            k['name'],
+            f"[{score_color}]{k['score']}[/{score_color}]",
+            str(k['max']),
+            detail,
+        )
+
+    # Total row
+    total_color = 'green' if guna['total'] >= 24 else ('yellow' if guna['total'] >= 18 else 'red')
+    guna_table.add_row(
+        "[bold]TOTAL[/bold]",
+        f"[bold {total_color}]{guna['total']}[/bold {total_color}]",
+        "36",
+        f"[bold]{guna['assessment']}[/bold]",
+    )
+
+    console.print(guna_table)
+
+    # Venus comparison panel
+    venus = result['venus_analysis']
+    if venus.get('available'):
+        venus_color = 'green' if venus['quality'] == 'Harmonious' else (
+            'red' if venus['quality'] == 'Tense' else 'yellow'
+        )
+        console.print()
+        console.print(Panel(
+            f"[bold]{person1['name']}[/bold] Venus: "
+            f"[magenta]{venus['person1_venus_sign']}[/magenta] "
+            f"(H{venus['person1_venus_house']}, {venus['person1_venus_dignity']})\n"
+            f"[bold]{person2['name']}[/bold] Venus: "
+            f"[magenta]{venus['person2_venus_sign']}[/magenta] "
+            f"(H{venus['person2_venus_house']}, {venus['person2_venus_dignity']})\n"
+            f"Sign distance: {venus['sign_distance']}  |  "
+            f"Quality: [{venus_color}]{venus['quality']}[/{venus_color}]",
+            title="[bold magenta]Venus Axis Comparison[/bold magenta]",
+            border_style="magenta",
+            padding=(0, 2),
+        ))
+
+    # 7th lord panel
+    seventh = result['seventh_lord']
+    seventh_lines = [
+        f"[bold]{person1['name']}[/bold] 7th sign: {seventh['person1_7th_sign']} "
+        f"(lord: {seventh['person1_7th_lord']})",
+        f"[bold]{person2['name']}[/bold] 7th sign: {seventh['person2_7th_sign']} "
+        f"(lord: {seventh['person2_7th_lord']})",
+    ]
+    if 'person1_7th_lord_in_p2_house' in seventh:
+        seventh_lines.append(
+            f"{person1['name']}'s 7th lord in {seventh.get('person1_7th_lord_sign', '?')} "
+            f"-> falls in {person2['name']}'s H{seventh['person1_7th_lord_in_p2_house']}"
+        )
+    if 'person2_7th_lord_in_p1_house' in seventh:
+        seventh_lines.append(
+            f"{person2['name']}'s 7th lord in {seventh.get('person2_7th_lord_sign', '?')} "
+            f"-> falls in {person1['name']}'s H{seventh['person2_7th_lord_in_p1_house']}"
+        )
+    if seventh.get('mutual_exchange'):
+        seventh_lines.append("[bold green]Mutual exchange of 7th lords![/bold green]")
+
+    console.print()
+    console.print(Panel(
+        "\n".join(seventh_lines),
+        title="[bold blue]7th Lord Exchange[/bold blue]",
+        border_style="blue",
+        padding=(0, 2),
+    ))
+
+    # Ascendant compatibility
+    asc_compat = result['ascendant_compatibility']
+    asc_q = asc_compat['quality']
+    asc_color = 'green' if 'Excellent' in asc_q or 'Good' in asc_q else (
+        'red' if 'Challenging' in asc_q else 'yellow'
+    )
+    console.print()
+    console.print(Panel(
+        f"{person1['name']}: {asc_compat['person1_asc']} (lord {asc_compat['person1_asc_lord']})\n"
+        f"{person2['name']}: {asc_compat['person2_asc']} (lord {asc_compat['person2_asc_lord']})\n"
+        f"[{asc_color}]{asc_q}[/{asc_color}]",
+        title="[bold cyan]Ascendant Compatibility[/bold cyan]",
+        border_style="cyan",
+        padding=(0, 2),
+    ))
+
+    # Mangal Dosha
+    mangal = result['mangal_dosha']
+    m1 = mangal['person1']
+    m2 = mangal['person2']
+    mangal_lines = []
+    for label, m in [(person1['name'], m1), (person2['name'], m2)]:
+        status = "[red]Manglik[/red]" if m.get('effective') else (
+            "[yellow]Manglik (cancelled)[/yellow]" if m.get('manglik') else "[green]Not Manglik[/green]"
+        )
+        mangal_lines.append(f"{label}: Mars in H{m.get('mars_house', '?')} ({m.get('mars_sign', '?')}) -- {status}")
+        for c in m.get('cancellations', []):
+            mangal_lines.append(f"  [dim]{c}[/dim]")
+
+    if mangal.get('cancels_out'):
+        mangal_lines.append("\n[green]Both Manglik -- Dosha cancels out.[/green]")
+
+    console.print()
+    console.print(Panel(
+        "\n".join(mangal_lines),
+        title="[bold red]Mangal Dosha[/bold red]",
+        border_style="red",
+        padding=(0, 2),
+    ))
+
+    # Overall score panel
+    score = result['overall_score']
+    assess = result['assessment']
+    score_color = 'green' if score >= 70 else ('yellow' if score >= 50 else 'red')
+    console.print()
+    console.print(Panel(
+        f"[bold]Overall Compatibility Score: [{score_color}]{score}/100[/{score_color}][/bold]\n"
+        f"Assessment: [bold {score_color}]{assess}[/bold {score_color}]\n\n"
+        f"{result['summary']}",
+        title="[bold gold1]Overall Compatibility[/bold gold1]",
+        border_style="gold1",
+        padding=(1, 2),
+    ))
+
+    # Save reading
+    reading_text = (
+        f"Synastry: {person1['name']} & {person2['name']}\n"
+        f"Guna Milan: {guna['total']}/36 ({guna['assessment']})\n"
+        f"Overall: {score}/100 ({assess})\n\n"
+        f"{result['summary']}"
+    )
+    transit_date = datetime.now().strftime("%Y-%m-%d")
+    save_reading(
+        conn, person1['id'], 'synastry', reading_text,
+        query=f"Compatibility with {person2['name']}", transit_date=transit_date,
+    )
+    conn.close()
+
+    console.print(f"\n[dim]Reading saved to database.[/dim]")
+    console.print()
+
+
+# ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
 
@@ -1122,6 +1756,10 @@ def build_parser() -> argparse.ArgumentParser:
     chart_parser = subparsers.add_parser('chart', help='Display a birth chart')
     chart_parser.add_argument('name', help='Person name')
 
+    # d9
+    d9_parser = subparsers.add_parser('d9', help='Display Navamsha (D9) chart')
+    d9_parser.add_argument('name', help='Person name')
+
     # transit
     transit_parser = subparsers.add_parser('transit', help='Show current transits')
     transit_parser.add_argument('name', help='Person name')
@@ -1137,6 +1775,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     # list
     subparsers.add_parser('list', help='List all stored charts')
+
+    # synastry
+    synastry_parser = subparsers.add_parser('synastry', help='Compare two charts for compatibility')
+    synastry_parser.add_argument('name1', help='First person name')
+    synastry_parser.add_argument('name2', help='Second person name')
+
+    # muhurta
+    muhurta_parser = subparsers.add_parser('muhurta', help='Evaluate auspiciousness of a date')
+    muhurta_parser.add_argument('name', help='Person name')
+    muhurta_parser.add_argument('--date', required=True, help='Target date (YYYY-MM-DD)')
+    muhurta_parser.add_argument('--type', default='general', help='Event type: court, business, travel, ceremony, medical, general')
 
     return parser
 
@@ -1167,10 +1816,13 @@ def main():
     dispatch = {
         'new': cmd_new,
         'chart': cmd_chart,
+        'd9': cmd_d9,
         'transit': cmd_transit,
         'dasha': cmd_dasha,
         'ask': cmd_ask,
         'list': cmd_list,
+        'synastry': cmd_synastry,
+        'muhurta': cmd_muhurta,
     }
 
     handler = dispatch.get(args.command)

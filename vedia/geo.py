@@ -17,6 +17,8 @@ from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
 
+from .db import get_connection, init_db, get_cached_geocode, save_geocode_cache
+
 
 # ---------------------------------------------------------------------------
 # Module-level singletons (lazy-friendly, thread-safe for reads)
@@ -60,6 +62,22 @@ def geocode_location(location_str: str) -> GeoResult:
     if not location_str or not location_str.strip():
         raise ValueError("Location string must not be empty")
 
+    # Check geocoding cache first
+    try:
+        conn = get_connection()
+        init_db(conn)
+        cached = get_cached_geocode(conn, location_str)
+        if cached:
+            conn.close()
+            return GeoResult(
+                latitude=cached['latitude'],
+                longitude=cached['longitude'],
+                timezone=cached['timezone'],
+            )
+        conn.close()
+    except Exception:
+        pass  # Fall through to live geocoding on any cache error
+
     try:
         location = _geocoder.geocode(location_str)
     except GeocoderTimedOut as exc:
@@ -84,6 +102,18 @@ def geocode_location(location_str: str) -> GeoResult:
             f"Could not determine timezone for coordinates: "
             f"{lat:.4f}, {lon:.4f} (location: {location_str})"
         )
+
+    # Save successful result to cache
+    try:
+        conn = get_connection()
+        init_db(conn)
+        save_geocode_cache(
+            conn, location_str, lat, lon, tz_str,
+            display_name=str(location),
+        )
+        conn.close()
+    except Exception:
+        pass  # Don't fail the geocode on cache write errors
 
     return GeoResult(latitude=lat, longitude=lon, timezone=tz_str)
 

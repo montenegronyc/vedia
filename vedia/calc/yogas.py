@@ -14,6 +14,7 @@ from ..models import (
     DEBILITATION,
     NATURAL_FRIENDS,
 )
+from .divisional import calculate_d9_position
 
 
 # ---------------------------------------------------------------------------
@@ -981,7 +982,208 @@ def detect_mangal_dosha(
 
 
 # ---------------------------------------------------------------------------
-# 11. Sade Sati
+# 11. Vargottama Detection
+# ---------------------------------------------------------------------------
+
+_PLANET_NAMES_ALL = [
+    'Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter',
+    'Venus', 'Saturn', 'Rahu', 'Ketu',
+]
+
+_VARGOTTAMA_DESCRIPTIONS = {
+    'Sun': (
+        'The Sun occupies the same sign in both the D1 and D9 charts, '
+        'greatly strengthening the native\'s sense of self, authority, '
+        'and vitality. Leadership abilities and confidence are amplified.'
+    ),
+    'Moon': (
+        'The Moon is Vargottama, reinforcing emotional stability and '
+        'mental strength. The native enjoys a steady mind, good '
+        'intuition, and strong public connection.'
+    ),
+    'Mars': (
+        'Mars in Vargottama position intensifies courage, determination, '
+        'and physical energy. The native possesses unwavering drive and '
+        'the ability to overcome obstacles decisively.'
+    ),
+    'Mercury': (
+        'Mercury is Vargottama, sharpening intellect, communication, '
+        'and analytical skills. The native excels in learning, trade, '
+        'and diplomatic expression.'
+    ),
+    'Jupiter': (
+        'Jupiter in Vargottama amplifies wisdom, spiritual growth, and '
+        'fortune. The native benefits from strong dharmic inclinations '
+        'and the favour of teachers and mentors.'
+    ),
+    'Venus': (
+        'Venus is Vargottama, enhancing artistic talent, romantic '
+        'fulfilment, and material comforts. Relationships and creative '
+        'pursuits flourish under this placement.'
+    ),
+    'Saturn': (
+        'Saturn in Vargottama solidifies discipline, perseverance, and '
+        'long-term success. The native builds enduring structures and '
+        'earns respect through sustained effort.'
+    ),
+    'Rahu': (
+        'Rahu in Vargottama strengthens the native\'s capacity for '
+        'unconventional achievement and worldly ambition. Material '
+        'gains through innovation are indicated.'
+    ),
+    'Ketu': (
+        'Ketu in Vargottama deepens spiritual insight and detachment. '
+        'The native has a powerful intuitive sense and may attain '
+        'liberation-oriented wisdom.'
+    ),
+}
+
+
+def detect_vargottama(
+    planets: list[PlanetPosition], asc_sign: int
+) -> list[YogaResult]:
+    """Detect Vargottama planets (same sign in D1 and D9 charts).
+
+    A planet is Vargottama when it occupies the same zodiacal sign in
+    the rashi (D1) chart and the navamsha (D9) chart.  This is a
+    significant indicator of inherent strength for that planet.
+
+    Parameters
+    ----------
+    planets : list[PlanetPosition]
+        All nine planetary positions in the D1 chart.
+    asc_sign : int
+        The sign number (1-12) of the ascendant (unused but kept for
+        a consistent API with other detection functions).
+
+    Returns
+    -------
+    list[YogaResult]
+        One result per Vargottama planet found.
+    """
+    results: list[YogaResult] = []
+
+    for name in _PLANET_NAMES_ALL:
+        p = _get_planet(planets, name)
+        if p is None:
+            continue
+
+        d9_sign = calculate_d9_position(p.sign, p.sign_degree)
+        if d9_sign != p.sign:
+            continue
+
+        # Determine strength: "strong" if also exalted or in own sign
+        is_exalted = (p.sign == EXALTATION.get(name))
+        is_own = (p.sign in OWN_SIGNS.get(name, []))
+        strength = 'strong' if (is_exalted or is_own) else 'moderate'
+
+        description = _VARGOTTAMA_DESCRIPTIONS.get(name, (
+            f'{name} is Vargottama, occupying the same sign in both '
+            f'the rashi and navamsha charts, indicating inherent strength.'
+        ))
+
+        results.append(YogaResult(
+            yoga_name=f'Vargottama ({name})',
+            yoga_type='benefic',
+            planets_involved=[name],
+            houses_involved=[p.house],
+            strength=strength,
+            description=description,
+        ))
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# 12. Graha Yuddha (Planetary War)
+# ---------------------------------------------------------------------------
+
+_WAR_PLANETS = ['Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn']
+
+_WAR_EFFECTS = {
+    'Mars': 'courage, initiative, and physical vitality are diminished',
+    'Mercury': 'intellect, communication, and commercial acumen suffer',
+    'Jupiter': 'wisdom, fortune, and spiritual guidance are weakened',
+    'Venus': 'relationships, comforts, and artistic expression are harmed',
+    'Saturn': 'discipline, endurance, and long-term prospects are undermined',
+}
+
+
+def detect_graha_yuddha(
+    planets: list[PlanetPosition], asc_sign: int
+) -> list[YogaResult]:
+    """Detect Graha Yuddha (planetary war) between the five tara planets.
+
+    Planetary war occurs when two planets (excluding Sun, Moon, Rahu,
+    and Ketu) are within 1 degree of absolute longitude of each other.
+    The planet with the higher longitude is considered the winner;
+    the loser is significantly weakened.
+
+    Parameters
+    ----------
+    planets : list[PlanetPosition]
+        All planetary positions in the chart.
+    asc_sign : int
+        The sign number (1-12) of the ascendant (unused but kept for
+        a consistent API with other detection functions).
+
+    Returns
+    -------
+    list[YogaResult]
+        One result per planetary war detected.
+    """
+    results: list[YogaResult] = []
+
+    # Collect war-eligible planets that exist in the chart
+    war_planets: list[PlanetPosition] = []
+    for name in _WAR_PLANETS:
+        p = _get_planet(planets, name)
+        if p is not None:
+            war_planets.append(p)
+
+    # Check every pair
+    for i in range(len(war_planets)):
+        for j in range(i + 1, len(war_planets)):
+            p1 = war_planets[i]
+            p2 = war_planets[j]
+
+            # Absolute longitude difference, handling 360° wrap
+            diff = abs(p1.longitude - p2.longitude)
+            if diff > 180.0:
+                diff = 360.0 - diff
+
+            if diff > 1.0:
+                continue
+
+            # Winner has higher longitude (traditional rule)
+            if p1.longitude >= p2.longitude:
+                winner, loser = p1, p2
+            else:
+                winner, loser = p2, p1
+
+            strength = 'strong' if diff < 0.5 else 'moderate'
+            loser_effect = _WAR_EFFECTS.get(loser.planet, 'significations are weakened')
+
+            results.append(YogaResult(
+                yoga_name=f'Graha Yuddha ({winner.planet} defeats {loser.planet})',
+                yoga_type='dosha',
+                planets_involved=[winner.planet, loser.planet],
+                houses_involved=[winner.house, loser.house],
+                strength=strength,
+                description=(
+                    f'{winner.planet} and {loser.planet} are in planetary war, '
+                    f'separated by only {diff:.2f}°. {winner.planet} emerges '
+                    f'victorious with higher longitude, while {loser.planet}\'s '
+                    f'{loser_effect}. The houses ruled and occupied by '
+                    f'{loser.planet} may experience setbacks.'
+                ),
+            ))
+
+    return results
+
+
+# ---------------------------------------------------------------------------
+# 13. Sade Sati
 # ---------------------------------------------------------------------------
 
 def detect_sade_sati(
@@ -1091,6 +1293,8 @@ def detect_all_yogas(
     all_yogas.extend(detect_kemadruma(planets, asc_sign))
     all_yogas.extend(detect_kaal_sarp(planets, asc_sign))
     all_yogas.extend(detect_mangal_dosha(planets, asc_sign))
+    all_yogas.extend(detect_vargottama(planets, asc_sign))
+    all_yogas.extend(detect_graha_yuddha(planets, asc_sign))
     all_yogas.extend(detect_sade_sati(planets, asc_sign, transit_saturn_sign))
 
     # Sort: benefic yogas first, then doshas; within each group strongest first
