@@ -1,4 +1,4 @@
-"""Vedia MCP Server — 6 tools for Vedic astrology via Claude.
+"""Vedia MCP Server — 8 tools for Vedic astrology via Claude.
 
 Usage:
     python vedia/mcp_server.py          # stdio transport (for Claude Code)
@@ -8,7 +8,7 @@ Usage:
 import json
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Ensure vedia package is importable when run as a script
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,7 +17,7 @@ from mcp.server.fastmcp import FastMCP
 
 from vedia.db import (
     get_connection, init_db, save_person, save_chart, save_dasha_periods,
-    save_yogas, save_ashtakavarga, save_shadbala,
+    save_yogas, save_ashtakavarga, save_shadbala, save_yogini_periods,
     get_person_by_name, get_chart as db_get_chart, get_planet_positions,
     get_dasha_periods, get_yogas, get_all_persons, get_shadbala,
     get_ashtakavarga,
@@ -26,7 +26,8 @@ from vedia.models import SIGNS, NAKSHATRA_NAMES, ChartData, PlanetPosition, SIGN
 from vedia.geo import geocode_location, local_to_utc, get_utc_offset
 from vedia.calc.ayanamsha import calculate_julian_day, get_ayanamsha_value, calculate_ascendant
 from vedia.calc.ephemeris import calculate_planet_positions
-from vedia.calc.dashas import calculate_full_dashas, get_current_dasha
+from vedia.calc.dashas import calculate_full_dashas, get_current_dasha, calculate_full_yogini_dashas
+from vedia.calc.nakshatras import get_dignity
 from vedia.calc.yogas import detect_all_yogas
 from vedia.calc.ashtakavarga import calculate_ashtakavarga
 from vedia.calc.shadbala import calculate_shadbala
@@ -161,6 +162,71 @@ def _find_current_dashas(conn, person_id: int, target_dt: datetime = None) -> di
     return result
 
 
+def _find_current_yogini_dashas(conn, person_id: int, target_dt: datetime = None) -> dict:
+    """Find current Yogini maha/antar/pratyantar dasha periods."""
+    now_str = (target_dt or datetime.now()).isoformat()
+    maha_rows = get_dasha_periods(conn, person_id, level='maha', system='yogini')
+    antar_rows = get_dasha_periods(conn, person_id, level='antar', system='yogini')
+    pratyantar_rows = get_dasha_periods(conn, person_id, level='pratyantar', system='yogini')
+
+    result = {'current_maha': None, 'current_antar': None, 'current_pratyantar': None}
+
+    for m in maha_rows:
+        if m['start_date'] <= now_str <= m['end_date']:
+            result['current_maha'] = {
+                'planet': m['planet'],
+                'start': m['start_date'][:10],
+                'end': m['end_date'][:10],
+            }
+            for a in antar_rows:
+                if a['parent_id'] == m['id'] and a['start_date'] <= now_str <= a['end_date']:
+                    result['current_antar'] = {
+                        'planet': a['planet'],
+                        'start': a['start_date'][:10],
+                        'end': a['end_date'][:10],
+                    }
+                    for p in pratyantar_rows:
+                        if p['parent_id'] == a['id'] and p['start_date'] <= now_str <= p['end_date']:
+                            result['current_pratyantar'] = {
+                                'planet': p['planet'],
+                                'start': p['start_date'][:10],
+                                'end': p['end_date'][:10],
+                            }
+                            break
+                    break
+            break
+
+    return result
+
+
+def _build_divisional_payload(conn, person_id: int, chart_type: str,
+                               d1_sign_map: dict) -> dict:
+    """Build enriched divisional chart payload with dignity and vargottama."""
+    div_chart = db_get_chart(conn, person_id, chart_type=chart_type)
+    if not div_chart:
+        return {'ascendant': None, 'planets': []}
+    div_planet_rows = get_planet_positions(conn, div_chart['id'])
+    planets = [
+        {
+            'planet': row['planet'],
+            'sign': row['sign'],
+            'sign_name': _sign_name(row['sign']),
+            'degree': round(row['sign_degree'], 2),
+            'house': row['house'],
+            'dignity': get_dignity(row['planet'], row['sign'], row['sign_degree']),
+            'is_vargottama': d1_sign_map.get(row['planet']) == row['sign'],
+        }
+        for row in div_planet_rows
+    ]
+    return {
+        'ascendant': {
+            'sign': div_chart['ascendant_sign'],
+            'sign_name': _sign_name(div_chart['ascendant_sign']),
+        },
+        'planets': planets,
+    }
+
+
 def _build_chart_payload(conn, person: dict, chart: dict, planet_rows: list[dict]) -> dict:
     """Build the fat chart payload dict shared by calculate_chart and get_chart."""
     asc_sign = chart['ascendant_sign']
@@ -190,8 +256,9 @@ def _build_chart_payload(conn, person: dict, chart: dict, planet_rows: list[dict
             'description': y['description'],
         })
 
-    # Current dashas
-    dashas = _find_current_dashas(conn, person['id'])
+    # Current dashas (Vimshottari + Yogini)
+    vimshottari_dashas = _find_current_dashas(conn, person['id'])
+    yogini_dashas = _find_current_yogini_dashas(conn, person['id'])
 
     # Shadbala
     shadbala_rows = get_shadbala(conn, chart_id)
@@ -210,24 +277,23 @@ def _build_chart_payload(conn, person: dict, chart: dict, planet_rows: list[dict
         for sb in shadbala_rows
     ]
 
-    # Sarvashtakavarga
+    # Ashtakavarga: Sarva + Bhinna (BAV)
     sarva_rows = get_ashtakavarga(conn, chart_id, 'sarva')
     sarva = {row['sign']: row['points'] for row in sarva_rows}
 
-    # D9 chart
-    d9_chart = db_get_chart(conn, person['id'], chart_type='D9')
-    d9 = []
-    if d9_chart:
-        d9_planet_rows = get_planet_positions(conn, d9_chart['id'])
-        d9 = [
-            {
-                'planet': row['planet'],
-                'sign': row['sign'],
-                'sign_name': _sign_name(row['sign']),
-                'house': row['house'],
-            }
-            for row in d9_planet_rows
-        ]
+    bhinna_rows = get_ashtakavarga(conn, chart_id, 'bhinna')
+    bav = {}
+    for row in bhinna_rows:
+        planet = row['contributing_planet']
+        if planet not in bav:
+            bav[planet] = {}
+        bav[planet][row['sign']] = row['points']
+
+    # Divisional charts: D9, D7, D10
+    d1_sign_map = {row['planet']: row['sign'] for row in planet_rows}
+    d9_data = _build_divisional_payload(conn, person['id'], 'D9', d1_sign_map)
+    d7_data = _build_divisional_payload(conn, person['id'], 'D7', d1_sign_map)
+    d10_data = _build_divisional_payload(conn, person['id'], 'D10', d1_sign_map)
 
     return {
         'person': {
@@ -246,10 +312,15 @@ def _build_chart_payload(conn, person: dict, chart: dict, planet_rows: list[dict
         },
         'planets': planets,
         'yogas': yogas,
-        'dashas': dashas,
+        'dashas': {
+            'vimshottari': vimshottari_dashas,
+            'yogini': yogini_dashas,
+        },
         'shadbala': shadbala,
-        'ashtakavarga': {'sarva': sarva},
-        'd9': d9,
+        'ashtakavarga': {'sarva': sarva, 'bav': bav},
+        'd9': d9_data,
+        'd7': d7_data,
+        'd10': d10_data,
     }
 
 
@@ -263,6 +334,33 @@ def _load_person_and_chart(conn, name: str):
         return person, None, None
     planet_rows = get_planet_positions(conn, chart['id'])
     return person, chart, planet_rows
+
+
+def _save_divisional_chart(conn, person_id, planet_positions, chart_type,
+                            asc_sign, asc_degree, name, birth_date, birth_time,
+                            tz_str, birth_location, lat, lon, ayanamsha_val,
+                            jd, sidereal_time):
+    """Calculate and save a divisional chart to the database."""
+    div_planets = calculate_divisional_chart(planet_positions, chart_type, asc_sign, asc_degree)
+    div_asc_sign = get_divisional_sign(asc_sign, asc_degree, chart_type)
+    div_chart_data = ChartData(
+        person_name=name,
+        birth_date=birth_date,
+        birth_time=birth_time,
+        birth_timezone=tz_str,
+        birth_location=birth_location,
+        latitude=lat,
+        longitude=lon,
+        chart_type=chart_type,
+        ayanamsha='lahiri',
+        ayanamsha_value=ayanamsha_val,
+        ascendant_sign=div_asc_sign,
+        ascendant_degree=asc_degree,
+        julian_day=jd,
+        sidereal_time=sidereal_time,
+        planets=div_planets,
+    )
+    save_chart(conn, person_id, div_chart_data)
 
 
 # ---------------------------------------------------------------------------
@@ -329,11 +427,14 @@ def calculate_chart(name: str, birth_date: str, birth_time: str, birth_location:
             planets=planet_positions,
         )
 
-        # Step 7: Dashas
+        # Step 7: Vimshottari Dashas
         moon_pos = next((p for p in planet_positions if p.planet == 'Moon'), None)
         if moon_pos is None:
             return {"error": "Moon position not found in calculations."}
         dashas = calculate_full_dashas(moon_pos.longitude, dt_parts)
+
+        # Step 7b: Yogini Dashas
+        yogini_dashas = calculate_full_yogini_dashas(moon_pos.longitude, dt_parts)
 
         # Step 8: Yogas
         yogas = detect_all_yogas(planet_positions, asc_sign)
@@ -350,28 +451,18 @@ def calculate_chart(name: str, birth_date: str, birth_time: str, birth_location:
         person_id = save_person(conn, name, birth_date, birth_time, tz_str, birth_location, lat, lon)
         chart_id = save_chart(conn, person_id, chart_data)
 
-        # Save D9
-        d9_planets = calculate_divisional_chart(planet_positions, 'D9', asc_sign, asc_degree)
-        d9_asc_sign = get_divisional_sign(asc_sign, asc_degree, 'D9')
-        d9_chart_data = ChartData(
-            person_name=name,
-            birth_date=birth_date,
-            birth_time=birth_time,
-            birth_timezone=tz_str,
-            birth_location=birth_location,
-            latitude=lat,
-            longitude=lon,
-            chart_type='D9',
-            ayanamsha='lahiri',
-            ayanamsha_value=ayanamsha_val,
-            ascendant_sign=d9_asc_sign,
-            ascendant_degree=asc_degree,
-            julian_day=jd,
-            sidereal_time=sidereal_time,
-            planets=d9_planets,
+        # Save divisional charts: D9, D7, D10
+        div_args = dict(
+            asc_sign=asc_sign, asc_degree=asc_degree, name=name,
+            birth_date=birth_date, birth_time=birth_time, tz_str=tz_str,
+            birth_location=birth_location, lat=lat, lon=lon,
+            ayanamsha_val=ayanamsha_val, jd=jd, sidereal_time=sidereal_time,
         )
-        save_chart(conn, person_id, d9_chart_data)
+        for div_type in ('D9', 'D7', 'D10'):
+            _save_divisional_chart(conn, person_id, planet_positions, div_type, **div_args)
+
         save_dasha_periods(conn, person_id, dashas)
+        save_yogini_periods(conn, person_id, yogini_dashas)
         save_yogas(conn, chart_id, yogas)
         save_ashtakavarga(conn, chart_id, bhinna, sarva)
         save_shadbala(conn, chart_id, shadbala_results)
@@ -398,8 +489,8 @@ def calculate_chart(name: str, birth_date: str, birth_time: str, birth_location:
 def get_chart(name: str) -> dict:
     """Load a previously calculated Vedic birth chart from the database.
     Returns complete chart data: planets with signs/houses/nakshatras/dignity/aspects,
-    all yogas, current maha/antar/pratyantar dashas, shadbala scores,
-    sarvashtakavarga, and D9 (Navamsha) positions."""
+    all yogas, current maha/antar/pratyantar dashas (Vimshottari + Yogini), shadbala scores,
+    sarvashtakavarga, bhinnashtakavarga (BAV), and D9/D7/D10 divisional charts."""
     try:
         conn = get_connection()
         init_db(conn)
@@ -573,10 +664,16 @@ def analyze_compatibility(name1: str, name2: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def evaluate_timing(name: str, dates: str, event_type: str = "general") -> dict:
+def evaluate_timing(name: str, dates: str, event_type: str = "general",
+                    date_range: str = "", filters: str = "") -> dict:
     """Muhurta: evaluate one or more dates for auspiciousness.
     dates: comma-separated YYYY-MM-DD (e.g. '2026-04-30' or '2026-04-28,2026-04-30,2026-05-02').
     event_type: general, court, business, travel, ceremony, medical.
+    date_range: optional 'YYYY-MM-DD,YYYY-MM-DD' to scan all dates in a range (overrides dates).
+    filters: optional JSON string with keys:
+      day_of_week: string or array of day names (e.g. "Thursday" or ["Monday","Thursday"])
+      min_score: minimum total score threshold (0-100)
+      top_n: return only top N results, ranked best-first
     Returns per-date scores (gochara, vara, nakshatra, transits, SAV), total auspiciousness,
     factors, and recommendations. Multiple dates are ranked best-first."""
     try:
@@ -603,19 +700,66 @@ def evaluate_timing(name: str, dates: str, event_type: str = "general") -> dict:
             conn.close()
             return {"error": "Natal Moon not found in chart data."}
 
-        # Parse dates
-        date_list = [d.strip() for d in dates.split(',') if d.strip()]
-        if not date_list:
-            conn.close()
-            return {"error": "No dates provided. Use comma-separated YYYY-MM-DD."}
-
-        parsed_dates = []
-        for d in date_list:
+        # Parse filters
+        filter_opts = {}
+        if filters:
             try:
-                parsed_dates.append(datetime.strptime(d, '%Y-%m-%d'))
+                filter_opts = json.loads(filters)
+            except (json.JSONDecodeError, TypeError):
+                conn.close()
+                return {"error": "filters must be valid JSON."}
+
+        # Build date list: date_range takes precedence over dates
+        if date_range:
+            range_parts = [d.strip() for d in date_range.split(',')]
+            if len(range_parts) != 2:
+                conn.close()
+                return {"error": "date_range must be 'YYYY-MM-DD,YYYY-MM-DD' (start,end)."}
+            try:
+                range_start = datetime.strptime(range_parts[0], '%Y-%m-%d')
+                range_end = datetime.strptime(range_parts[1], '%Y-%m-%d')
             except ValueError:
                 conn.close()
-                return {"error": f"Invalid date format: '{d}'. Use YYYY-MM-DD."}
+                return {"error": "Invalid date_range format. Use YYYY-MM-DD,YYYY-MM-DD."}
+            if range_end < range_start:
+                conn.close()
+                return {"error": "date_range end must be after start."}
+            parsed_dates = []
+            current = range_start
+            while current <= range_end:
+                parsed_dates.append(current)
+                current += timedelta(days=1)
+        else:
+            # Parse comma-separated dates
+            date_list = [d.strip() for d in dates.split(',') if d.strip()]
+            if not date_list:
+                conn.close()
+                return {"error": "No dates provided. Use comma-separated YYYY-MM-DD or date_range."}
+            parsed_dates = []
+            for d in date_list:
+                try:
+                    parsed_dates.append(datetime.strptime(d, '%Y-%m-%d'))
+                except ValueError:
+                    conn.close()
+                    return {"error": f"Invalid date format: '{d}'. Use YYYY-MM-DD."}
+
+        # Apply day_of_week pre-filter (before expensive transit calculations)
+        day_filter = filter_opts.get('day_of_week')
+        if day_filter:
+            if isinstance(day_filter, str):
+                day_filter = [day_filter]
+            day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            allowed_weekdays = set()
+            for dn in day_filter:
+                if dn in day_names:
+                    allowed_weekdays.add(day_names.index(dn))
+            parsed_dates = [dt for dt in parsed_dates if dt.weekday() in allowed_weekdays]
+
+        dates_scanned = len(parsed_dates)
+
+        if dates_scanned == 0:
+            conn.close()
+            return {"evaluations": [], "dates_scanned": 0}
 
         # Get dasha lord for each date
         maha_rows = get_dasha_periods(conn, person['id'], level='maha')
@@ -659,7 +803,7 @@ def evaluate_timing(name: str, dates: str, event_type: str = "general") -> dict:
                 event_type=event_type,
                 **kwargs,
             )
-            return {'evaluations': [result]}
+            results = [result]
         else:
             results = compare_dates(
                 natal_planets=natal_planets,
@@ -669,7 +813,17 @@ def evaluate_timing(name: str, dates: str, event_type: str = "general") -> dict:
                 event_type=event_type,
                 **kwargs,
             )
-            return {'evaluations': results}
+
+        # Apply post-filters
+        min_score = filter_opts.get('min_score')
+        if min_score is not None:
+            results = [r for r in results if r['total_score'] >= min_score]
+
+        top_n = filter_opts.get('top_n')
+        if top_n is not None:
+            results = results[:int(top_n)]
+
+        return {'evaluations': results, 'dates_scanned': dates_scanned}
 
     except Exception as e:
         return {"error": f"Timing evaluation failed: {e}"}
@@ -707,6 +861,112 @@ def list_charts() -> dict:
 
     except Exception as e:
         return {"error": f"Failed to list charts: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# Tool 7: list_dashas
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def list_dashas(name: str, level: str = "maha", within_maha: str = "",
+                within_antar: str = "", date_from: str = "", date_to: str = "",
+                system: str = "vimshottari") -> dict:
+    """Query the dasha tree for a saved person.
+    level: 'maha', 'antar', or 'pratyantar'. Determines which level of periods to list.
+    within_maha: Planet name to filter antar/pratyantar periods within that maha dasha.
+    within_antar: Planet name (requires within_maha) to filter pratyantar periods.
+    date_from/date_to: YYYY-MM-DD to filter periods overlapping a date range.
+    system: 'vimshottari' (default) or 'yogini'. Which dasha system to query.
+    Returns the matching periods with their hierarchy context."""
+    try:
+        conn = get_connection()
+        init_db(conn)
+        person = get_person_by_name(conn, name)
+        if person is None:
+            conn.close()
+            return {"error": f"No person found matching '{name}'."}
+
+        all_periods = get_dasha_periods(conn, person['id'], system=system)
+        conn.close()
+
+        if not all_periods:
+            return {"error": f"No {system} dasha periods found for '{person['name']}'. Use calculate_chart to create them."}
+
+        # Build lookup
+        by_id = {row['id']: row for row in all_periods}
+        maha_rows = [r for r in all_periods if r['level'] == 'maha']
+        antar_rows = [r for r in all_periods if r['level'] == 'antar']
+        pratyantar_rows = [r for r in all_periods if r['level'] == 'pratyantar']
+
+        # Determine target set
+        if level == 'maha':
+            target = maha_rows
+        elif level == 'antar':
+            if within_maha:
+                parent_maha = [m for m in maha_rows if m['planet'] == within_maha]
+                if not parent_maha:
+                    return {"error": f"No maha dasha found for planet '{within_maha}' in {system} system."}
+                parent_ids = {m['id'] for m in parent_maha}
+                target = [a for a in antar_rows if a['parent_id'] in parent_ids]
+            else:
+                target = antar_rows
+        elif level == 'pratyantar':
+            if within_maha and within_antar:
+                parent_maha = [m for m in maha_rows if m['planet'] == within_maha]
+                parent_ids = {m['id'] for m in parent_maha}
+                parent_antars = [a for a in antar_rows
+                                 if a['parent_id'] in parent_ids and a['planet'] == within_antar]
+                antar_ids = {a['id'] for a in parent_antars}
+                target = [p for p in pratyantar_rows if p['parent_id'] in antar_ids]
+            elif within_maha:
+                parent_maha = [m for m in maha_rows if m['planet'] == within_maha]
+                parent_ids = {m['id'] for m in parent_maha}
+                parent_antars = [a for a in antar_rows if a['parent_id'] in parent_ids]
+                antar_ids = {a['id'] for a in parent_antars}
+                target = [p for p in pratyantar_rows if p['parent_id'] in antar_ids]
+            else:
+                target = pratyantar_rows
+        else:
+            return {"error": f"Invalid level '{level}'. Use 'maha', 'antar', or 'pratyantar'."}
+
+        # Date range filter
+        if date_from:
+            target = [r for r in target if r['end_date'][:10] >= date_from]
+        if date_to:
+            target = [r for r in target if r['start_date'][:10] <= date_to]
+
+        # Format results
+        def _format_period(row):
+            entry = {
+                'planet': row['planet'],
+                'level': row['level'],
+                'start': row['start_date'][:10],
+                'end': row['end_date'][:10],
+            }
+            if row['parent_id'] and row['parent_id'] in by_id:
+                parent = by_id[row['parent_id']]
+                entry['parent_planet'] = parent['planet']
+                entry['parent_level'] = parent['level']
+            return entry
+
+        periods = [_format_period(r) for r in target]
+
+        return {
+            'person': person['name'],
+            'system': system,
+            'level': level,
+            'filters': {
+                'within_maha': within_maha or None,
+                'within_antar': within_antar or None,
+                'date_from': date_from or None,
+                'date_to': date_to or None,
+            },
+            'count': len(periods),
+            'periods': periods,
+        }
+
+    except Exception as e:
+        return {"error": f"Dasha query failed: {e}"}
 
 
 # ---------------------------------------------------------------------------

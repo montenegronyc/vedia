@@ -17,6 +17,11 @@ from ..models import (
     DASHA_YEARS,
     NAKSHATRA_LORDS,
     DashaPeriod,
+    YOGINI_NAMES,
+    YOGINI_LORDS,
+    YOGINI_YEARS,
+    YOGINI_TOTAL_YEARS,
+    YoginiPeriod,
 )
 
 # Each nakshatra spans 13 degrees 20 minutes = 13.333... degrees
@@ -301,6 +306,224 @@ def get_current_dasha(
         return result
 
     # Find active pratyantar dasha within the antar
+    for pratyantar in result['antar'].sub_periods:
+        if pratyantar.start_date <= date < pratyantar.end_date:
+            result['pratyantar'] = pratyantar
+            break
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Yogini Dasha System (36-year cycle, 8 yoginis)
+# ---------------------------------------------------------------------------
+
+def calculate_yogini_starting_index(moon_nakshatra: int) -> int:
+    """Determine the starting Yogini index from the birth nakshatra number.
+
+    Formula: (nakshatra_number + 3) mod 8.
+
+    Args:
+        moon_nakshatra: Birth nakshatra number (1-27).
+
+    Returns:
+        Index 0-7 into YOGINI_NAMES.
+    """
+    return (moon_nakshatra + 3) % 8
+
+
+def calculate_yogini_balance(moon_longitude: float) -> tuple[str, float]:
+    """Determine the first Yogini dasha and remaining balance at birth.
+
+    Args:
+        moon_longitude: Sidereal longitude of the Moon in degrees (0-360).
+
+    Returns:
+        Tuple of (yogini_name, balance_years).
+    """
+    nakshatra_index = int(moon_longitude / _NAKSHATRA_SPAN)
+    if nakshatra_index >= 27:
+        nakshatra_index = 26
+
+    nakshatra_number = nakshatra_index + 1  # 1-based
+    yogini_index = calculate_yogini_starting_index(nakshatra_number)
+    yogini_name = YOGINI_NAMES[yogini_index]
+
+    offset_in_nakshatra = moon_longitude % _NAKSHATRA_SPAN
+    remaining_fraction = 1.0 - (offset_in_nakshatra / _NAKSHATRA_SPAN)
+    balance_years = YOGINI_YEARS[yogini_name] * remaining_fraction
+
+    return (yogini_name, balance_years)
+
+
+def _get_yogini_sequence_from(starting_yogini: str) -> list[str]:
+    """Return the 8-yogini sequence starting from the given yogini name."""
+    idx = YOGINI_NAMES.index(starting_yogini)
+    return YOGINI_NAMES[idx:] + YOGINI_NAMES[:idx]
+
+
+def calculate_yogini_maha_dashas(
+    moon_longitude: float,
+    birth_datetime: datetime,
+) -> list[YoginiPeriod]:
+    """Calculate Yogini maha dasha periods covering 120+ years.
+
+    The 36-year cycle repeats to cover the same span as Vimshottari.
+
+    Args:
+        moon_longitude: Sidereal longitude of the Moon at birth (0-360).
+        birth_datetime: Date and time of birth.
+
+    Returns:
+        List of YoginiPeriod objects with level='maha'.
+    """
+    starting_yogini, balance_years = calculate_yogini_balance(moon_longitude)
+    sequence = _get_yogini_sequence_from(starting_yogini)
+
+    maha_dashas: list[YoginiPeriod] = []
+    current_date = birth_datetime
+
+    # First period: balance portion only
+    balance_days = balance_years * _DAYS_PER_YEAR
+    end_date = current_date + timedelta(days=balance_days)
+    maha_dashas.append(YoginiPeriod(
+        level='maha',
+        yogini_name=starting_yogini,
+        lord=YOGINI_LORDS[starting_yogini],
+        start_date=current_date,
+        end_date=end_date,
+    ))
+    current_date = end_date
+    total_years = balance_years
+
+    # Subsequent full-period dashas, cycling until 120 years covered
+    cycle_index = 1
+    while total_years < _TOTAL_CYCLE_YEARS:
+        yogini = sequence[cycle_index % 8]
+        years = YOGINI_YEARS[yogini]
+        days = years * _DAYS_PER_YEAR
+        end_date = current_date + timedelta(days=days)
+
+        maha_dashas.append(YoginiPeriod(
+            level='maha',
+            yogini_name=yogini,
+            lord=YOGINI_LORDS[yogini],
+            start_date=current_date,
+            end_date=end_date,
+        ))
+
+        current_date = end_date
+        total_years += years
+        cycle_index += 1
+
+    return maha_dashas
+
+
+def _calculate_yogini_sub_periods(
+    parent: YoginiPeriod,
+    level: str,
+) -> list[YoginiPeriod]:
+    """Calculate sub-periods within a Yogini parent period.
+
+    Sub-periods follow the Yogini sequence starting from the parent's yogini.
+    Duration is proportional to each yogini's years relative to the 36-year total.
+
+    Args:
+        parent: The parent YoginiPeriod to subdivide.
+        level: Level label for sub-periods ('antar' or 'pratyantar').
+
+    Returns:
+        List of YoginiPeriod objects at the specified level.
+    """
+    sequence = _get_yogini_sequence_from(parent.yogini_name)
+    parent_total_days = (parent.end_date - parent.start_date).total_seconds() / 86400.0
+
+    sub_periods: list[YoginiPeriod] = []
+    current_date = parent.start_date
+
+    for yogini in sequence:
+        fraction = YOGINI_YEARS[yogini] / YOGINI_TOTAL_YEARS
+        sub_days = parent_total_days * fraction
+        end_date = current_date + timedelta(days=sub_days)
+
+        sub_periods.append(YoginiPeriod(
+            level=level,
+            yogini_name=yogini,
+            lord=YOGINI_LORDS[yogini],
+            start_date=current_date,
+            end_date=end_date,
+        ))
+
+        current_date = end_date
+
+    return sub_periods
+
+
+def calculate_full_yogini_dashas(
+    moon_longitude: float,
+    birth_datetime: datetime,
+) -> list[YoginiPeriod]:
+    """Calculate the complete three-level Yogini dasha hierarchy.
+
+    Computes all maha dashas, then populates each with antar dashas,
+    and each antar with pratyantar dashas.
+
+    Args:
+        moon_longitude: Sidereal longitude of the Moon at birth (0-360).
+        birth_datetime: Date and time of birth.
+
+    Returns:
+        List of YoginiPeriod objects (maha level) with fully populated
+        sub_periods trees.
+    """
+    maha_dashas = calculate_yogini_maha_dashas(moon_longitude, birth_datetime)
+
+    for maha in maha_dashas:
+        antars = _calculate_yogini_sub_periods(maha, 'antar')
+        maha.sub_periods = antars
+        for antar in antars:
+            pratyantars = _calculate_yogini_sub_periods(antar, 'pratyantar')
+            antar.sub_periods = pratyantars
+
+    return maha_dashas
+
+
+def get_current_yogini_dasha(
+    dashas: list[YoginiPeriod],
+    date: datetime = None,
+) -> dict[str, YoginiPeriod | None]:
+    """Find the active Yogini maha, antar, and pratyantar for a given date.
+
+    Args:
+        dashas: List of Yogini maha dasha periods.
+        date: The date/time to query. Defaults to now.
+
+    Returns:
+        Dict with keys 'maha', 'antar', 'pratyantar'.
+    """
+    if date is None:
+        date = datetime.now()
+
+    result: dict[str, YoginiPeriod | None] = {
+        'maha': None,
+        'antar': None,
+        'pratyantar': None,
+    }
+
+    for maha in dashas:
+        if maha.start_date <= date < maha.end_date:
+            result['maha'] = maha
+            break
+    else:
+        return result
+
+    for antar in result['maha'].sub_periods:
+        if antar.start_date <= date < antar.end_date:
+            result['antar'] = antar
+            break
+    else:
+        return result
+
     for pratyantar in result['antar'].sub_periods:
         if pratyantar.start_date <= date < pratyantar.end_date:
             result['pratyantar'] = pratyantar

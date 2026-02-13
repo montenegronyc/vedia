@@ -142,6 +142,13 @@ def init_db(conn: sqlite3.Connection):
     CREATE INDEX IF NOT EXISTS idx_ashtakavarga_chart ON ashtakavarga(chart_id, type);
     CREATE INDEX IF NOT EXISTS idx_shadbala_chart ON shadbala(chart_id);
     """)
+
+    # Migration: add system column for dasha type (vimshottari vs yogini)
+    try:
+        conn.execute("ALTER TABLE dasha_periods ADD COLUMN system TEXT NOT NULL DEFAULT 'vimshottari'")
+    except Exception:
+        pass  # Column already exists
+
     conn.commit()
 
 
@@ -203,7 +210,7 @@ def save_chart(conn: sqlite3.Connection, person_id: int, chart: ChartData) -> in
 
 
 def save_dasha_periods(conn: sqlite3.Connection, person_id: int, periods: list[DashaPeriod]):
-    conn.execute("DELETE FROM dasha_periods WHERE person_id = ?", (person_id,))
+    conn.execute("DELETE FROM dasha_periods WHERE person_id = ? AND (system = 'vimshottari' OR system IS NULL)", (person_id,))
     def _insert(period: DashaPeriod, parent_id=None):
         cur = conn.execute(
             """INSERT INTO dasha_periods (person_id, level, planet, parent_id, start_date, end_date)
@@ -214,6 +221,30 @@ def save_dasha_periods(conn: sqlite3.Connection, person_id: int, periods: list[D
         pid = cur.lastrowid
         for sub in period.sub_periods:
             _insert(sub, pid)
+    for p in periods:
+        _insert(p)
+    conn.commit()
+
+
+def save_yogini_periods(conn: sqlite3.Connection, person_id: int, periods: list) -> None:
+    """Save Yogini dasha periods to the dasha_periods table with system='yogini'."""
+    conn.execute(
+        "DELETE FROM dasha_periods WHERE person_id = ? AND system = 'yogini'",
+        (person_id,)
+    )
+
+    def _insert(period, parent_id=None):
+        cur = conn.execute(
+            """INSERT INTO dasha_periods
+               (person_id, level, planet, parent_id, start_date, end_date, system)
+               VALUES (?, ?, ?, ?, ?, ?, 'yogini')""",
+            (person_id, period.level, period.lord, parent_id,
+             period.start_date.isoformat(), period.end_date.isoformat())
+        )
+        pid = cur.lastrowid
+        for sub in period.sub_periods:
+            _insert(sub, pid)
+
     for p in periods:
         _insert(p)
     conn.commit()
@@ -297,17 +328,17 @@ def get_planet_positions(conn: sqlite3.Connection, chart_id: int) -> list[dict]:
     return [dict(r) for r in cur.fetchall()]
 
 
-def get_dasha_periods(conn: sqlite3.Connection, person_id: int, level: str = None) -> list[dict]:
+def get_dasha_periods(conn: sqlite3.Connection, person_id: int, level: str = None, system: str = 'vimshottari') -> list[dict]:
+    base = "SELECT * FROM dasha_periods WHERE person_id = ?"
+    params = [person_id]
+    if system:
+        base += " AND (system = ? OR system IS NULL)"
+        params.append(system)
     if level:
-        cur = conn.execute(
-            "SELECT * FROM dasha_periods WHERE person_id = ? AND level = ? ORDER BY start_date",
-            (person_id, level)
-        )
-    else:
-        cur = conn.execute(
-            "SELECT * FROM dasha_periods WHERE person_id = ? ORDER BY start_date",
-            (person_id,)
-        )
+        base += " AND level = ?"
+        params.append(level)
+    base += " ORDER BY start_date"
+    cur = conn.execute(base, params)
     return [dict(r) for r in cur.fetchall()]
 
 

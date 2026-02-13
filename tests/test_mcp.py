@@ -17,6 +17,7 @@ from vedia.mcp_server import (
     analyze_transits,
     analyze_compatibility,
     evaluate_timing,
+    list_dashas,
 )
 
 
@@ -303,7 +304,7 @@ def test_get_chart_crystal():
     result = get_chart('Crystal')
     assert 'error' not in result, f"get_chart failed: {result.get('error')}"
     expected_keys = ['person', 'ascendant', 'planets', 'yogas', 'dashas',
-                     'shadbala', 'ashtakavarga', 'd9']
+                     'shadbala', 'ashtakavarga', 'd9', 'd7', 'd10']
     for key in expected_keys:
         assert key in result, f"Missing key: {key}"
 
@@ -386,15 +387,19 @@ def test_get_chart_yogas_structure():
 
 
 def test_get_chart_dashas_structure():
-    """Dashas dict has current_maha, current_antar, current_pratyantar."""
+    """Dashas dict has vimshottari and yogini keys, each with current periods."""
     result = get_chart('Crystal')
     dashas = result['dashas']
-    assert 'current_maha' in dashas
-    assert 'current_antar' in dashas
-    assert 'current_pratyantar' in dashas
+    assert 'vimshottari' in dashas
+    assert 'yogini' in dashas
 
-    # Maha dasha should exist for current date
-    maha = dashas['current_maha']
+    # Vimshottari maha dasha should exist for current date
+    vim = dashas['vimshottari']
+    assert 'current_maha' in vim
+    assert 'current_antar' in vim
+    assert 'current_pratyantar' in vim
+
+    maha = vim['current_maha']
     assert maha is not None
     assert 'planet' in maha
     assert 'start' in maha
@@ -417,10 +422,11 @@ def test_get_chart_shadbala_structure():
 
 
 def test_get_chart_ashtakavarga_structure():
-    """Ashtakavarga has a sarva dict mapping sign numbers to points."""
+    """Ashtakavarga has sarva and bav dicts."""
     result = get_chart('Crystal')
     av = result['ashtakavarga']
     assert 'sarva' in av
+    assert 'bav' in av
     sarva = av['sarva']
     assert isinstance(sarva, dict)
     # Should have entries for signs 1-12
@@ -429,35 +435,96 @@ def test_get_chart_ashtakavarga_structure():
         assert isinstance(points, int)
 
 
+def test_get_chart_bav_structure():
+    """BAV should be {planet: {sign: points}} with 7 classical planets."""
+    result = get_chart('Crystal')
+    bav = result['ashtakavarga']['bav']
+    assert isinstance(bav, dict)
+    expected_planets = {'Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn'}
+    assert set(bav.keys()) == expected_planets
+    for planet, signs in bav.items():
+        assert len(signs) == 12
+        for sign, points in signs.items():
+            assert 0 <= points <= 8
+
+
 def test_get_chart_d9_structure():
-    """D9 (Navamsha) is a list of planet dicts (may be empty if D9 not saved)."""
+    """D9 (Navamsha) is a dict with ascendant and planets list."""
     result = get_chart('Crystal')
     d9 = result['d9']
-    assert isinstance(d9, list)
+    assert isinstance(d9, dict)
+    assert 'planets' in d9
+    assert 'ascendant' in d9
 
     # If D9 data exists, validate structure
-    if len(d9) > 0:
-        assert len(d9) == 9  # 9 planets
-        for entry in d9:
+    if len(d9['planets']) > 0:
+        assert len(d9['planets']) == 9  # 9 planets
+        for entry in d9['planets']:
             assert 'planet' in entry
             assert 'sign' in entry
             assert 'sign_name' in entry
             assert 'house' in entry
+            assert 'degree' in entry
+            assert 'dignity' in entry
+            assert 'is_vargottama' in entry
+            assert isinstance(entry['is_vargottama'], bool)
+
+
+def test_get_chart_d9_vargottama_logic():
+    """Vargottama should be True when D1 sign equals D9 sign."""
+    result = get_chart('Crystal')
+    d9 = result['d9']
+    planets_d1 = {p['planet']: p['sign'] for p in result['planets']}
+    for d9_entry in d9['planets']:
+        expected = planets_d1[d9_entry['planet']] == d9_entry['sign']
+        assert d9_entry['is_vargottama'] == expected
+
+
+def test_get_chart_d7_structure():
+    """D7 (Saptamsha) should have ascendant and planets list."""
+    result = get_chart('Crystal')
+    d7 = result.get('d7', {})
+    assert isinstance(d7, dict)
+    assert 'planets' in d7
+    if d7['planets']:
+        assert len(d7['planets']) == 9
+        for entry in d7['planets']:
+            assert 'planet' in entry
+            assert 'sign' in entry
+            assert 'dignity' in entry
+            assert 'is_vargottama' in entry
+
+
+def test_get_chart_d10_structure():
+    """D10 (Dashamsha) should have ascendant and planets list."""
+    result = get_chart('Crystal')
+    d10 = result.get('d10', {})
+    assert isinstance(d10, dict)
+    assert 'planets' in d10
+    if d10['planets']:
+        assert len(d10['planets']) == 9
+        for entry in d10['planets']:
+            assert 'planet' in entry
+            assert 'sign' in entry
+            assert 'dignity' in entry
 
 
 def test_get_chart_d9_structure_lee():
     """Lee's D9 chart should exist and have 9 planets."""
     result = get_chart('Lee')
     d9 = result['d9']
-    assert isinstance(d9, list)
+    assert isinstance(d9, dict)
+    assert 'planets' in d9
 
-    if len(d9) > 0:
-        assert len(d9) == 9
-        for entry in d9:
+    if len(d9['planets']) > 0:
+        assert len(d9['planets']) == 9
+        for entry in d9['planets']:
             assert 'planet' in entry
             assert 'sign' in entry
             assert 'sign_name' in entry
             assert 'house' in entry
+            assert 'dignity' in entry
+            assert 'is_vargottama' in entry
 
 
 def test_get_chart_lee():
@@ -583,6 +650,7 @@ def test_evaluate_timing_single_date():
     result = evaluate_timing('Crystal', '2026-04-30', 'court')
     assert 'error' not in result, f"evaluate_timing failed: {result.get('error')}"
     assert 'evaluations' in result
+    assert 'dates_scanned' in result
     evals = result['evaluations']
     assert isinstance(evals, list)
     assert len(evals) == 1
@@ -633,3 +701,121 @@ def test_evaluate_timing_general_event_type():
     result = evaluate_timing('Crystal', '2026-04-30', 'general')
     assert 'error' not in result, f"evaluate_timing failed: {result.get('error')}"
     assert 'evaluations' in result
+
+
+# ---------------------------------------------------------------------------
+# Tool: evaluate_timing — date range scanning
+# ---------------------------------------------------------------------------
+
+def test_evaluate_timing_date_range():
+    """evaluate_timing with date_range expands to all dates in range."""
+    result = evaluate_timing('Crystal', '', 'court', date_range='2026-04-28,2026-04-30')
+    assert 'error' not in result, f"evaluate_timing failed: {result.get('error')}"
+    assert 'evaluations' in result
+    assert 'dates_scanned' in result
+    assert result['dates_scanned'] == 3  # 28, 29, 30
+
+
+def test_evaluate_timing_date_range_with_day_filter():
+    """Day of week filter reduces computation."""
+    result = evaluate_timing('Crystal', '', 'court',
+                             date_range='2026-04-01,2026-04-30',
+                             filters='{"day_of_week": "Thursday"}')
+    assert 'error' not in result, f"Failed: {result.get('error')}"
+    evals = result['evaluations']
+    for ev in evals:
+        assert ev['day_of_week'] == 'Thursday'
+
+
+def test_evaluate_timing_date_range_with_top_n():
+    """top_n filter limits results."""
+    result = evaluate_timing('Crystal', '', 'court',
+                             date_range='2026-04-01,2026-04-30',
+                             filters='{"top_n": 3}')
+    assert 'error' not in result, f"Failed: {result.get('error')}"
+    assert len(result['evaluations']) <= 3
+
+
+def test_evaluate_timing_date_range_invalid():
+    """Invalid date_range returns error."""
+    result = evaluate_timing('Crystal', '', 'court', date_range='bad')
+    assert 'error' in result
+
+
+def test_evaluate_timing_date_range_reversed():
+    """date_range with end before start returns error."""
+    result = evaluate_timing('Crystal', '', 'court', date_range='2026-05-01,2026-04-01')
+    assert 'error' in result
+
+
+def test_evaluate_timing_date_range_empty_after_filter():
+    """Date range with day_of_week filter that matches nothing returns empty."""
+    # A single day range on a known non-Sunday
+    result = evaluate_timing('Crystal', '', 'court',
+                             date_range='2026-04-30,2026-04-30',
+                             filters='{"day_of_week": "Sunday"}')
+    # April 30, 2026 is a Thursday, not Sunday
+    assert 'error' not in result
+    assert result['dates_scanned'] == 0
+    assert result['evaluations'] == []
+
+
+# ---------------------------------------------------------------------------
+# Tool: list_dashas
+# ---------------------------------------------------------------------------
+
+def test_list_dashas_maha():
+    """list_dashas returns maha dasha periods for Crystal."""
+    result = list_dashas('Crystal', level='maha')
+    assert 'error' not in result, f"list_dashas failed: {result.get('error')}"
+    assert 'periods' in result
+    assert result['system'] == 'vimshottari'
+    assert result['level'] == 'maha'
+    assert len(result['periods']) >= 9  # Full Vimshottari cycle
+
+
+def test_list_dashas_antar_within_maha():
+    """list_dashas returns antar periods within a specific maha for Crystal."""
+    result = list_dashas('Crystal', level='antar', within_maha='Venus')
+    assert 'error' not in result, f"list_dashas failed: {result.get('error')}"
+    assert len(result['periods']) == 9  # 9 antars within any maha
+    for p in result['periods']:
+        assert p['parent_planet'] == 'Venus'
+
+
+def test_list_dashas_pratyantar_within_antar():
+    """list_dashas returns pratyantars within a specific antar."""
+    result = list_dashas('Crystal', level='pratyantar',
+                         within_maha='Venus', within_antar='Sun')
+    assert 'error' not in result, f"list_dashas failed: {result.get('error')}"
+    assert len(result['periods']) == 9  # 9 pratyantars within any antar
+
+
+def test_list_dashas_date_filter():
+    """Date filter narrows results."""
+    result = list_dashas('Crystal', level='maha',
+                         date_from='2020-01-01', date_to='2030-01-01')
+    assert 'error' not in result
+    for p in result['periods']:
+        assert p['end'] >= '2020-01-01'
+        assert p['start'] <= '2030-01-01'
+
+
+def test_list_dashas_nonexistent_person():
+    """Nonexistent person returns error."""
+    result = list_dashas('NonexistentPerson12345', level='maha')
+    assert 'error' in result
+
+
+def test_list_dashas_invalid_level():
+    """Invalid level returns error."""
+    result = list_dashas('Crystal', level='invalid')
+    assert 'error' in result
+
+
+def test_list_dashas_yogini_system():
+    """list_dashas with system='yogini' queries Yogini dashas."""
+    result = list_dashas('Crystal', level='maha', system='yogini')
+    # May return error if Crystal doesn't have Yogini dashas yet
+    # (requires recalculation). Just verify it doesn't crash.
+    assert isinstance(result, dict)

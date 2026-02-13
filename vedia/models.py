@@ -162,3 +162,34 @@ class ShadbalaResult:
     drik_bala: float = 0.0
     total_shadbala: float = 0.0
     shadbala_ratio: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Yogini Dasha constants (36-year cycle, 8 yoginis)
+# ---------------------------------------------------------------------------
+
+YOGINI_SEQUENCE = [
+    ('Mangala', 'Moon', 1),
+    ('Pingala', 'Sun', 2),
+    ('Dhanya', 'Jupiter', 3),
+    ('Bhramari', 'Mars', 4),
+    ('Bhadrika', 'Mercury', 5),
+    ('Ulka', 'Saturn', 6),
+    ('Siddha', 'Venus', 7),
+    ('Sankata', 'Rahu', 8),
+]
+
+YOGINI_NAMES = [y[0] for y in YOGINI_SEQUENCE]
+YOGINI_LORDS = {y[0]: y[1] for y in YOGINI_SEQUENCE}
+YOGINI_YEARS = {y[0]: y[2] for y in YOGINI_SEQUENCE}
+YOGINI_TOTAL_YEARS = 36
+
+
+@dataclass
+class YoginiPeriod:
+    level: str              # 'maha', 'antar', 'pratyantar'
+    yogini_name: str        # 'Mangala', 'Pingala', etc.
+    lord: str               # Planetary lord (Moon, Sun, etc.)
+    start_date: datetime = None
+    end_date: datetime = None
+    sub_periods: list['YoginiPeriod'] = field(default_factory=list)
